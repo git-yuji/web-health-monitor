@@ -20,7 +20,7 @@ body {
   display: grid;
   min-height: 100vh;
   place-items: center;
-  padding: 32px;
+  padding: 32px clamp(16px, 3vw, 24px);
 }
 
 .hero {
@@ -59,4 +59,3 @@ h1 {
   background: #fff;
   box-shadow: 0 12px 36px rgb(34 72 49 / 8%);
 }
-
