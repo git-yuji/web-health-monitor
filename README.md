@@ -25,6 +25,7 @@ Webサイトの稼働状態を定期的に確認し、結果を記録するモ�
 
 - TypeScript
 - Vite
+- Tailwind CSS
 
 データ保存やバックエンドの技術は、MVP実装時に決定します。
 
