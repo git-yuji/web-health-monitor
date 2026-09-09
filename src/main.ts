@@ -39,7 +39,7 @@ app.innerHTML = `
             稼働状態、応答速度、SSL証明書をまとめて確認。異常の兆候を早く見つけるためのシンプルなモニタリングツールです。
           </p>
 
-          <div class="mt-9 max-w-xl rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/8">
+          <div class="mt-9 max-w-xl rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/8 transition focus-within:border-emerald-500 focus-within:ring-4 focus-within:ring-emerald-500/10">
             <div class="flex flex-col gap-2 sm:flex-row">
               <label class="sr-only" for="target-url">確認するURL</label>
               <div class="flex min-w-0 flex-1 items-center gap-3 px-3">
