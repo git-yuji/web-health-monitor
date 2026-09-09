@@ -41,3 +41,6 @@ npm run dev
 npm run build
 ```
 
+## 開発ルール
+
+コミットメッセージとブランチ運用のルールは[CONTRIBUTING.md](./CONTRIBUTING.md)を参照してください。
