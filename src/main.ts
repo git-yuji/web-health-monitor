@@ -1,4 +1,5 @@
 import "./style.css";
+import { validateTargetUrl } from "./url-validation";
 
 const app = document.querySelector<HTMLElement>("#app");
 
@@ -40,21 +41,21 @@ app.innerHTML = `
             稼働状態、応答速度、SSL証明書をまとめて確認。異常の兆候を早く見つけるためのシンプルなモニタリングツールです。
           </p>
 
-          <div class="mt-9 max-w-xl rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/8 transition focus-within:border-emerald-500 focus-within:ring-4 focus-within:ring-emerald-500/10">
+          <form id="url-check-form" class="mt-9 max-w-xl rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/8 transition focus-within:border-emerald-500 focus-within:ring-4 focus-within:ring-emerald-500/10" novalidate>
             <div class="flex flex-col gap-2 sm:flex-row">
               <label class="sr-only" for="target-url">確認するURL</label>
               <div class="flex min-w-0 flex-1 items-center gap-3 px-3">
                 <svg viewBox="0 0 24 24" class="size-5 shrink-0 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9S14.5 18.3 12 21c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3Z" />
                 </svg>
-                <input id="target-url" type="url" placeholder="https://example.com" class="min-w-0 flex-1 bg-transparent py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400" />
+                <input id="target-url" type="url" placeholder="https://example.com" autocomplete="url" inputmode="url" aria-describedby="url-form-message" class="min-w-0 flex-1 bg-transparent py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400" />
               </div>
-              <button type="button" class="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
+              <button type="submit" class="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
                 サイトを確認
               </button>
             </div>
-          </div>
-          <p class="mt-3 text-xs text-slate-600">診断機能は現在開発中です。画面は完成イメージです。</p>
+          </form>
+          <p id="url-form-message" class="mt-3 text-xs text-slate-600" aria-live="polite">診断機能は現在開発中です。画面は完成イメージです。</p>
         </div>
 
         <div class="relative mx-auto min-w-0 w-full max-w-lg">
@@ -150,3 +151,49 @@ app.innerHTML = `
     </footer>
   </div>
 `;
+
+function getRequiredElement<T extends Element>(root: ParentNode, selector: string): T {
+  const element = root.querySelector<T>(selector);
+
+  if (!element) {
+    throw new Error(`${selector} が見つかりません。`);
+  }
+
+  return element;
+}
+
+const urlForm = getRequiredElement<HTMLFormElement>(app, "#url-check-form");
+const urlInput = getRequiredElement<HTMLInputElement>(app, "#target-url");
+const urlFormMessage = getRequiredElement<HTMLElement>(app, "#url-form-message");
+
+const defaultMessage = "診断機能は現在開発中です。画面は完成イメージです。";
+
+function setFormMessage(message: string, colorClass: string): void {
+  urlFormMessage.textContent = message;
+  urlFormMessage.classList.remove("text-slate-600", "text-red-700", "text-emerald-700");
+  urlFormMessage.classList.add(colorClass);
+}
+
+urlForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const result = validateTargetUrl(urlInput.value);
+
+  if (!result.valid) {
+    urlInput.setAttribute("aria-invalid", "true");
+    setFormMessage(result.message, "text-red-700");
+    urlInput.focus();
+    return;
+  }
+
+  urlInput.removeAttribute("aria-invalid");
+  setFormMessage(
+    "URLの形式を確認しました。診断機能は現在開発中です。",
+    "text-emerald-700",
+  );
+});
+
+urlInput.addEventListener("input", () => {
+  urlInput.removeAttribute("aria-invalid");
+  setFormMessage(defaultMessage, "text-slate-600");
+});
