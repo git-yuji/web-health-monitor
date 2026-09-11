@@ -1,4 +1,5 @@
 import "./style.css";
+import { requestSiteCheck, type SiteCheckResult } from "./site-check-api";
 import { validateTargetUrl } from "./url-validation";
 
 const app = document.querySelector<HTMLElement>("#app");
@@ -50,12 +51,12 @@ app.innerHTML = `
                 </svg>
                 <input id="target-url" type="url" placeholder="https://example.com" autocomplete="url" inputmode="url" aria-describedby="url-form-message" class="min-w-0 flex-1 bg-transparent py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400" />
               </div>
-              <button type="submit" class="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
+              <button id="url-check-submit" type="submit" class="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60">
                 サイトを確認
               </button>
             </div>
           </form>
-          <p id="url-form-message" class="mt-3 text-xs text-slate-600" aria-live="polite">診断機能は現在開発中です。画面は完成イメージです。</p>
+          <p id="url-form-message" class="mt-3 text-xs text-slate-600" aria-live="polite">URLを入力するとHTTPステータスと応答時間を確認できます。その他の項目は完成イメージです。</p>
         </div>
 
         <div class="relative mx-auto min-w-0 w-full max-w-lg">
@@ -64,22 +65,22 @@ app.innerHTML = `
             <div class="flex flex-wrap items-start justify-between gap-4 border-b border-white/10 pb-5">
               <div>
                 <p class="text-xs font-medium text-slate-400">MONITORED SITE</p>
-                <p class="mt-2 font-semibold text-white">yuyu-web.com</p>
+                <p id="monitored-site" class="mt-2 font-semibold text-white">yuyu-web.com</p>
               </div>
-              <span class="flex items-center gap-2 rounded-full bg-emerald-400/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 ring-1 ring-inset ring-emerald-400/20">
-                <span class="size-2 rounded-full bg-emerald-400"></span>
-                正常稼働
+              <span id="site-status" class="flex items-center gap-2 rounded-full bg-emerald-400/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 ring-1 ring-inset ring-emerald-400/20">
+                <span id="site-status-dot" class="size-2 rounded-full bg-emerald-400"></span>
+                <span id="site-status-label">正常稼働</span>
               </span>
             </div>
 
             <div class="grid grid-cols-1 gap-3 py-5 sm:grid-cols-2">
               <div class="rounded-2xl bg-white/6 p-4 ring-1 ring-inset ring-white/8">
                 <p class="text-xs text-slate-400">HTTP STATUS</p>
-                <p class="mt-2 text-2xl font-semibold text-white">200 <span class="text-sm font-normal text-slate-400">OK</span></p>
+                <p class="mt-2 text-2xl font-semibold text-white"><span id="http-status">200</span> <span id="http-status-text" class="text-sm font-normal text-slate-400">OK</span></p>
               </div>
               <div class="rounded-2xl bg-white/6 p-4 ring-1 ring-inset ring-white/8">
                 <p class="text-xs text-slate-400">RESPONSE</p>
-                <p class="mt-2 text-2xl font-semibold text-white">184 <span class="text-sm font-normal text-slate-400">ms</span></p>
+                <p class="mt-2 text-2xl font-semibold text-white"><span id="response-time">184</span> <span class="text-sm font-normal text-slate-400">ms</span></p>
               </div>
               <div class="rounded-2xl bg-white/6 p-4 ring-1 ring-inset ring-white/8">
                 <p class="text-xs text-slate-400">SSL EXPIRES</p>
@@ -165,16 +166,49 @@ function getRequiredElement<T extends Element>(root: ParentNode, selector: strin
 const urlForm = getRequiredElement<HTMLFormElement>(app, "#url-check-form");
 const urlInput = getRequiredElement<HTMLInputElement>(app, "#target-url");
 const urlFormMessage = getRequiredElement<HTMLElement>(app, "#url-form-message");
+const submitButton = getRequiredElement<HTMLButtonElement>(app, "#url-check-submit");
+const monitoredSite = getRequiredElement<HTMLElement>(app, "#monitored-site");
+const siteStatus = getRequiredElement<HTMLElement>(app, "#site-status");
+const siteStatusDot = getRequiredElement<HTMLElement>(app, "#site-status-dot");
+const siteStatusLabel = getRequiredElement<HTMLElement>(app, "#site-status-label");
+const httpStatus = getRequiredElement<HTMLElement>(app, "#http-status");
+const httpStatusText = getRequiredElement<HTMLElement>(app, "#http-status-text");
+const responseTime = getRequiredElement<HTMLElement>(app, "#response-time");
 
-const defaultMessage = "診断機能は現在開発中です。画面は完成イメージです。";
+const defaultMessage = "URLを入力するとHTTPステータスと応答時間を確認できます。その他の項目は完成イメージです。";
+type MessageColorClass = "text-slate-600" | "text-red-700" | "text-emerald-700";
 
-function setFormMessage(message: string, colorClass: string): void {
+function setFormMessage(message: string, colorClass: MessageColorClass): void {
   urlFormMessage.textContent = message;
   urlFormMessage.classList.remove("text-slate-600", "text-red-700", "text-emerald-700");
   urlFormMessage.classList.add(colorClass);
 }
 
-urlForm.addEventListener("submit", (event) => {
+function setLoading(isLoading: boolean): void {
+  urlInput.disabled = isLoading;
+  submitButton.disabled = isLoading;
+  submitButton.textContent = isLoading ? "確認中..." : "サイトを確認";
+}
+
+function renderSiteCheck(result: SiteCheckResult): void {
+  const isHealthy = result.status >= 200 && result.status < 400;
+
+  monitoredSite.textContent = new URL(result.url).hostname;
+  httpStatus.textContent = result.status.toString();
+  httpStatusText.textContent = result.statusText;
+  responseTime.textContent = result.responseTimeMs.toString();
+  siteStatusLabel.textContent = isHealthy ? "正常応答" : "要確認";
+  siteStatus.classList.toggle("bg-emerald-400/10", isHealthy);
+  siteStatus.classList.toggle("text-emerald-300", isHealthy);
+  siteStatus.classList.toggle("ring-emerald-400/20", isHealthy);
+  siteStatus.classList.toggle("bg-red-400/10", !isHealthy);
+  siteStatus.classList.toggle("text-red-300", !isHealthy);
+  siteStatus.classList.toggle("ring-red-400/20", !isHealthy);
+  siteStatusDot.classList.toggle("bg-emerald-400", isHealthy);
+  siteStatusDot.classList.toggle("bg-red-400", !isHealthy);
+}
+
+urlForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const result = validateTargetUrl(urlInput.value);
@@ -187,10 +221,22 @@ urlForm.addEventListener("submit", (event) => {
   }
 
   urlInput.removeAttribute("aria-invalid");
-  setFormMessage(
-    "URLの形式を確認しました。診断機能は現在開発中です。",
-    "text-emerald-700",
-  );
+  setLoading(true);
+  setFormMessage("サイトを確認しています。", "text-slate-600");
+
+  try {
+    const siteCheck = await requestSiteCheck(result.url.href);
+    renderSiteCheck(siteCheck);
+    setFormMessage(
+      "HTTPステータスと応答時間を取得しました。その他の項目は完成イメージです。",
+      "text-emerald-700",
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "サイトの確認に失敗しました。";
+    setFormMessage(message, "text-red-700");
+  } finally {
+    setLoading(false);
+  }
 });
 
 urlInput.addEventListener("input", () => {

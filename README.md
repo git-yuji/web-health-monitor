@@ -32,7 +32,17 @@ Webサイトの稼働状態を定期的に確認し、結果を記録するモ�
 ## セットアップ
 
 ```bash
+nvm use
 npm install
+```
+
+フロントエンドと診断APIを別々のターミナルで起動します。
+
+```bash
+npm run dev:api
+```
+
+```bash
 npm run dev
 ```
 
