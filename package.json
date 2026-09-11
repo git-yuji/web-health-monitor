@@ -3,13 +3,21 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=24.21.0 <25"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "dev:api": "npm run build:server && node dist-server/server/index.js",
+    "build": "tsc && vite build && npm run build:server",
+    "build:server": "tsc -p tsconfig.server.json",
+    "start:api": "node dist-server/server/index.js",
+    "test": "npm run build:server && node --test dist-server/server/*.test.js",
     "preview": "vite preview"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.13.4",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.2.0"
