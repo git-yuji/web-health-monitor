@@ -27,6 +27,7 @@ test("ローカルおよびプライベートIPアドレスを拒否する", () 
     "2002:7f00:1::1",
     "fc00::1",
     "fe80::1",
+    "fec0::1",
   ];
 
   for (const address of blockedAddresses) {
