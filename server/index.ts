@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { checkSite, SiteCheckTimeoutError } from "./check-site.js";
 import { UnsafeTargetError } from "./network-policy.js";
+import { ResultStorageError, saveSiteCheckResult } from "./result-store.js";
 import { validateTargetUrl } from "../src/url-validation.js";
 
 const port = 3000;
@@ -88,11 +89,14 @@ async function handleCheckRequest(
 
   try {
     const result = await checkSite(validationResult.url);
+    await saveSiteCheckResult(result);
     sendJson(response, 200, result);
   } catch (error) {
     const statusCode =
       error instanceof UnsafeTargetError
         ? 400
+        : error instanceof ResultStorageError
+          ? 500
         : error instanceof SiteCheckTimeoutError
           ? 504
           : 502;

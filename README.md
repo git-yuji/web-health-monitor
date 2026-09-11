@@ -46,6 +46,9 @@ npm run dev:api
 npm run dev
 ```
 
+診断に成功すると、結果は`data/check-results.jsonl`へ追記保存されます。
+このファイルはローカルデータのためGitの管理対象には含まれません。
+
 ## ビルド
 
 ```bash

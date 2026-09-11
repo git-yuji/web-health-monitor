@@ -65,7 +65,7 @@ app.innerHTML = `
             <div class="flex flex-wrap items-start justify-between gap-4 border-b border-white/10 pb-5">
               <div>
                 <p class="text-xs font-medium text-slate-400">MONITORED SITE</p>
-                <p id="monitored-site" class="mt-2 font-semibold text-white">yuyu-web.com</p>
+                <p id="monitored-site" class="mt-2 font-semibold text-white">example.com</p>
               </div>
               <span id="site-status" class="flex items-center gap-2 rounded-full bg-emerald-400/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 ring-1 ring-inset ring-emerald-400/20">
                 <span id="site-status-dot" class="size-2 rounded-full bg-emerald-400"></span>
@@ -235,7 +235,7 @@ urlForm.addEventListener("submit", async (event) => {
     const siteCheck = await requestSiteCheck(result.url.href);
     renderSiteCheck(siteCheck);
     setFormMessage(
-      "HTTPステータス、応答時間、SSL証明書の期限を取得しました。稼働率は完成イメージです。",
+      "HTTPステータス、応答時間、SSL証明書の期限を取得し、診断結果を保存しました。稼働率は完成イメージです。",
       "text-emerald-700",
     );
   } catch (error) {
