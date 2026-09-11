@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { SiteCheckResult } from "./check-site.js";
-import { ResultStorageError, saveSiteCheckResult } from "./result-store.js";
+import {
+  loadSiteCheckResults,
+  ResultStorageError,
+  saveSiteCheckResult,
+} from "./result-store.js";
 
 const firstResult: SiteCheckResult = {
   url: "https://example.com/",
@@ -41,6 +45,43 @@ test("同時に受け取った診断結果を呼び出し順に追記保存す�
   const lines = (await readFile(filePath, "utf8")).trim().split("\n");
 
   assert.deepEqual(lines.map((line) => JSON.parse(line)), [firstResult, secondResult]);
+  assert.deepEqual(await loadSiteCheckResults(filePath), [secondResult, firstResult]);
+});
+
+test("診断履歴を指定件数まで読み込む", async (context) => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "web-health-monitor-result-history-"),
+  );
+  context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
+  const filePath = join(temporaryDirectory, "results.jsonl");
+
+  await saveSiteCheckResult(firstResult, filePath);
+  await saveSiteCheckResult(secondResult, filePath);
+
+  assert.deepEqual(await loadSiteCheckResults(filePath, 1), [secondResult]);
+});
+
+test("保存ファイルがない場合は空の診断履歴を返す", async (context) => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "web-health-monitor-empty-history-"),
+  );
+  context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
+
+  assert.deepEqual(
+    await loadSiteCheckResults(join(temporaryDirectory, "missing.jsonl")),
+    [],
+  );
+});
+
+test("不正な形式の診断履歴を拒否する", async (context) => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "web-health-monitor-invalid-history-"),
+  );
+  context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
+  const filePath = join(temporaryDirectory, "results.jsonl");
+  await writeFile(filePath, '{"url":"https://example.com/"}\n', "utf8");
+
+  await assert.rejects(loadSiteCheckResults(filePath), ResultStorageError);
 });
 
 test("保存できない場合は専用エラーを返す", async (context) => {
