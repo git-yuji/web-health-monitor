@@ -24,7 +24,8 @@ app.innerHTML = `
       </div>
     </header>
 
-    <section class="relative border-b border-slate-200/80 bg-white">
+    <main>
+      <section class="relative border-b border-slate-200/80 bg-white">
       <div class="absolute inset-0 bg-[radial-gradient(circle_at_75%_25%,rgba(16,185,129,0.12),transparent_32%)]"></div>
       <div class="relative mx-auto grid w-full min-w-0 max-w-6xl items-center gap-14 px-5 py-16 sm:px-8 sm:py-24 lg:grid-cols-[1.05fr_0.95fr] lg:py-28">
         <div class="min-w-0">
@@ -53,7 +54,7 @@ app.innerHTML = `
               </button>
             </div>
           </div>
-          <p class="mt-3 text-xs text-slate-400">診断機能は現在開発中です。画面は完成イメージです。</p>
+          <p class="mt-3 text-xs text-slate-600">診断機能は現在開発中です。画面は完成イメージです。</p>
         </div>
 
         <div class="relative mx-auto min-w-0 w-full max-w-lg">
@@ -108,9 +109,9 @@ app.innerHTML = `
           </div>
         </div>
       </div>
-    </section>
+      </section>
 
-    <section class="mx-auto w-full max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
+      <section class="mx-auto w-full max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
       <div class="mb-8 max-w-xl">
         <p class="text-xs font-bold tracking-[0.16em] text-emerald-700">WHAT WE CHECK</p>
         <h2 class="mt-3 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">運用に必要な情報を、一か所に。</h2>
@@ -138,7 +139,8 @@ app.innerHTML = `
           <p class="mt-2 text-sm leading-7 text-slate-600">有効期限を確認し、証明書の更新忘れを防ぐための情報を表示します。</p>
         </article>
       </div>
-    </section>
+      </section>
+    </main>
 
     <footer class="border-t border-slate-200 bg-white">
       <div class="mx-auto flex w-full max-w-6xl flex-col gap-2 px-5 py-6 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between sm:px-8">
