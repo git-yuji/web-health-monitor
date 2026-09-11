@@ -13,6 +13,8 @@ test("SSL証明書の有効期限と残日数を返す", () => {
     {
       expiresAt: "2026-09-21T00:00:00.000Z",
       daysRemaining: 10,
+      valid: true,
+      validationError: null,
     },
   );
 });
@@ -40,4 +42,17 @@ test("不正な有効期限を拒否する", () => {
     () => createSslCertificateInfo("invalid", new Date("2026-09-11T00:00:00.000Z")),
     InvalidCertificateExpirationError,
   );
+});
+
+test("TLS検証エラーを証明書情報に保持する", () => {
+  const checkedAt = new Date("2026-09-11T00:00:00.000Z");
+  const certificate = createSslCertificateInfo(
+    "Apr 12 23:59:59 2015 GMT",
+    checkedAt,
+    "CERT_HAS_EXPIRED",
+  );
+
+  assert.equal(certificate.valid, false);
+  assert.equal(certificate.validationError, "CERT_HAS_EXPIRED");
+  assert.ok(certificate.daysRemaining < 0);
 });

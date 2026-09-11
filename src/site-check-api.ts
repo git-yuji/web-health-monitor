@@ -6,6 +6,8 @@ export type SiteCheckResult = {
   sslCertificate: {
     expiresAt: string;
     daysRemaining: number;
+    valid: boolean;
+    validationError: string | null;
   } | null;
   checkedAt: string;
 };
@@ -19,7 +21,10 @@ function isSslCertificateInfo(value: unknown): boolean {
 
   return (
     typeof certificate.expiresAt === "string" &&
-    typeof certificate.daysRemaining === "number"
+    typeof certificate.daysRemaining === "number" &&
+    typeof certificate.valid === "boolean" &&
+    (certificate.validationError === null ||
+      typeof certificate.validationError === "string")
   );
 }
 

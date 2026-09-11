@@ -193,7 +193,10 @@ function setLoading(isLoading: boolean): void {
 }
 
 function renderSiteCheck(result: SiteCheckResult): void {
-  const isHealthy = result.status >= 200 && result.status < 400;
+  const isHealthy =
+    result.status >= 200 &&
+    result.status < 400 &&
+    result.sslCertificate?.valid !== false;
 
   monitoredSite.textContent = new URL(result.url).hostname;
   httpStatus.textContent = result.status.toString();

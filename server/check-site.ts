@@ -50,6 +50,7 @@ export async function checkSite(url: URL): Promise<SiteCheckResult> {
 
             callback(null, firstAddress.address, firstAddress.family);
           },
+          rejectUnauthorized: url.protocol === "https:" ? false : undefined,
           signal: timeoutSignal,
         },
         (response) => {
@@ -70,8 +71,16 @@ export async function checkSite(url: URL): Promise<SiteCheckResult> {
             }
 
             try {
-              const certificate = response.socket.getPeerCertificate();
-              sslCertificate = createSslCertificateInfo(certificate.valid_to, checkedAt);
+              const tlsSocket = response.socket;
+              const certificate = tlsSocket.getPeerCertificate();
+              const validationError = tlsSocket.authorized
+                ? null
+                : String(tlsSocket.authorizationError ?? "TLS_CERTIFICATE_INVALID");
+              sslCertificate = createSslCertificateInfo(
+                certificate.valid_to,
+                checkedAt,
+                validationError,
+              );
             } catch (error) {
               response.destroy();
               reject(error);

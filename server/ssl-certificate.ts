@@ -3,6 +3,8 @@ const millisecondsPerDay = 24 * 60 * 60 * 1_000;
 export type SslCertificateInfo = {
   expiresAt: string;
   daysRemaining: number;
+  valid: boolean;
+  validationError: string | null;
 };
 
 export class InvalidCertificateExpirationError extends Error {
@@ -12,6 +14,7 @@ export class InvalidCertificateExpirationError extends Error {
 export function createSslCertificateInfo(
   validTo: string,
   checkedAt: Date,
+  validationError: string | null = null,
 ): SslCertificateInfo {
   const expiresAt = new Date(validTo);
 
@@ -30,5 +33,7 @@ export function createSslCertificateInfo(
   return {
     expiresAt: expiresAt.toISOString(),
     daysRemaining,
+    valid: validationError === null,
+    validationError,
   };
 }
