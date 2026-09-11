@@ -1,7 +1,7 @@
 import { request as requestHttp } from "node:http";
 import { request as requestHttps } from "node:https";
 import { performance } from "node:perf_hooks";
-import { resolvePublicAddress } from "./network-policy.js";
+import { resolvePublicAddresses } from "./network-policy.js";
 
 const requestTimeoutMs = 10_000;
 
@@ -22,7 +22,8 @@ export async function checkSite(url: URL): Promise<SiteCheckResult> {
   const startedAt = performance.now();
 
   try {
-    const resolvedAddress = await resolvePublicAddress(url.hostname, timeoutSignal);
+    const resolvedAddresses = await resolvePublicAddresses(url.hostname, timeoutSignal);
+    const [firstAddress] = resolvedAddresses;
     const request = url.protocol === "https:" ? requestHttps : requestHttp;
 
     return await new Promise((resolve, reject) => {
@@ -36,11 +37,11 @@ export async function checkSite(url: URL): Promise<SiteCheckResult> {
           },
           lookup: (_hostname, options, callback) => {
             if (options.all) {
-              callback(null, [resolvedAddress]);
+              callback(null, resolvedAddresses);
               return;
             }
 
-            callback(null, resolvedAddress.address, resolvedAddress.family);
+            callback(null, firstAddress.address, firstAddress.family);
           },
           signal: timeoutSignal,
         },

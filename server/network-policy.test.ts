@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isPublicIpAddress, resolvePublicAddress } from "./network-policy.js";
+import {
+  isPublicIpAddress,
+  resolvePublicAddresses,
+  selectPublicAddresses,
+} from "./network-policy.js";
 
 test("公開IPv4アドレスを許可する", () => {
   assert.equal(isPublicIpAddress("8.8.8.8"), true);
@@ -18,7 +22,9 @@ test("ローカルおよびプライベートIPアドレスを拒否する", () 
     "::ffff:127.0.0.1",
     "::",
     "::1",
+    "::7f00:1",
     "64:ff9b:1::1",
+    "2002:7f00:1::1",
     "fc00::1",
     "fe80::1",
   ];
@@ -30,7 +36,7 @@ test("ローカルおよびプライベートIPアドレスを拒否する", () 
 
 test("IPリテラル指定でもプライベートアドレスを拒否する", async () => {
   await assert.rejects(
-    resolvePublicAddress("127.0.0.1"),
+    resolvePublicAddresses("127.0.0.1"),
     /プライベートネットワーク/,
   );
 });
@@ -39,7 +45,20 @@ test("DNS解決前に中断された場合は中断理由を返す", async () =>
   const reason = new Error("timeout");
 
   await assert.rejects(
-    resolvePublicAddress("example.invalid", AbortSignal.abort(reason)),
+    resolvePublicAddresses("example.invalid", AbortSignal.abort(reason)),
     reason,
   );
+});
+
+test("複数の公開アドレスを順序どおり保持する", () => {
+  const addresses = selectPublicAddresses([
+    { address: "2001:4860:4860::8888", family: 6 },
+    { address: "192.168.0.1", family: 4 },
+    { address: "8.8.8.8", family: 4 },
+  ]);
+
+  assert.deepEqual(addresses, [
+    { address: "2001:4860:4860::8888", family: 6 },
+    { address: "8.8.8.8", family: 4 },
+  ]);
 });

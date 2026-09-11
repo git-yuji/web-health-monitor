@@ -6,6 +6,8 @@ export type ResolvedAddress = {
   family: 4 | 6;
 };
 
+export type ResolvedAddresses = [ResolvedAddress, ...ResolvedAddress[]];
+
 export class UnsafeTargetError extends Error {
   override name = "UnsafeTargetError";
 }
@@ -30,13 +32,13 @@ const blockedIpv4Subnets: Array<[string, number]> = [
 ];
 
 const blockedIpv6Subnets: Array<[string, number]> = [
-  ["::", 128],
-  ["::1", 128],
+  ["::", 96],
   ["64:ff9b::", 96],
   ["64:ff9b:1::", 48],
   ["100::", 64],
   ["2001::", 23],
   ["2001:db8::", 32],
+  ["2002::", 16],
   ["fc00::", 7],
   ["fe80::", 10],
   ["ff00::", 8],
@@ -90,10 +92,24 @@ function withAbortSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T
   });
 }
 
-export async function resolvePublicAddress(
+export function selectPublicAddresses(
+  addresses: ReadonlyArray<{ address: string; family: number }>,
+): ResolvedAddress[] {
+  const publicAddresses: ResolvedAddress[] = [];
+
+  for (const { address, family } of addresses) {
+    if ((family === 4 || family === 6) && isPublicIpAddress(address)) {
+      publicAddresses.push({ address, family });
+    }
+  }
+
+  return publicAddresses;
+}
+
+export async function resolvePublicAddresses(
   hostname: string,
   signal?: AbortSignal,
-): Promise<ResolvedAddress> {
+): Promise<ResolvedAddresses> {
   const normalizedHostname = hostname.replace(/^\[|\]$/g, "");
   const literalFamily = isIP(normalizedHostname);
 
@@ -102,17 +118,18 @@ export async function resolvePublicAddress(
       throw new UnsafeTargetError("プライベートネットワークのURLにはアクセスできません。");
     }
 
-    return { address: normalizedHostname, family: literalFamily };
+    return [{ address: normalizedHostname, family: literalFamily }];
   }
 
   const lookupPromise = lookup(normalizedHostname, { all: true, verbatim: true });
   const addresses = signal
     ? await withAbortSignal(lookupPromise, signal)
     : await lookupPromise;
-  for (const { address, family } of addresses) {
-    if ((family === 4 || family === 6) && isPublicIpAddress(address)) {
-      return { address, family };
-    }
+  const publicAddresses = selectPublicAddresses(addresses);
+  const [firstAddress, ...remainingAddresses] = publicAddresses;
+
+  if (firstAddress) {
+    return [firstAddress, ...remainingAddresses];
   }
 
   throw new UnsafeTargetError("公開ネットワーク上のホストを指定してください。");
