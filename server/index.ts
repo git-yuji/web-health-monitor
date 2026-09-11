@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { checkSite } from "./check-site.js";
+import { checkSite, SiteCheckTimeoutError } from "./check-site.js";
 import { UnsafeTargetError } from "./network-policy.js";
 import { validateTargetUrl } from "../src/url-validation.js";
 
@@ -90,7 +90,12 @@ async function handleCheckRequest(
     const result = await checkSite(validationResult.url);
     sendJson(response, 200, result);
   } catch (error) {
-    const statusCode = error instanceof UnsafeTargetError ? 400 : 502;
+    const statusCode =
+      error instanceof UnsafeTargetError
+        ? 400
+        : error instanceof SiteCheckTimeoutError
+          ? 504
+          : 502;
     sendJson(response, statusCode, { message: getErrorMessage(error) } satisfies ErrorResponse);
   }
 }

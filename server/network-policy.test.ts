@@ -33,3 +33,12 @@ test("IPリテラル指定でもプライベートアドレスを拒否する", 
     /プライベートネットワーク/,
   );
 });
+
+test("DNS解決前に中断された場合は中断理由を返す", async () => {
+  const reason = new Error("timeout");
+
+  await assert.rejects(
+    resolvePublicAddress("example.invalid", AbortSignal.abort(reason)),
+    reason,
+  );
+});

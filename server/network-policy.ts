@@ -63,7 +63,36 @@ export function isPublicIpAddress(address: string): boolean {
   return false;
 }
 
-export async function resolvePublicAddress(hostname: string): Promise<ResolvedAddress> {
+function withAbortSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const handleAbort = (): void => {
+      reject(signal.reason);
+    };
+
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", handleAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", handleAbort);
+        reject(error);
+      },
+    );
+
+    if (signal.aborted) {
+      handleAbort();
+      return;
+    }
+
+    signal.addEventListener("abort", handleAbort, { once: true });
+  });
+}
+
+export async function resolvePublicAddress(
+  hostname: string,
+  signal?: AbortSignal,
+): Promise<ResolvedAddress> {
   const normalizedHostname = hostname.replace(/^\[|\]$/g, "");
   const literalFamily = isIP(normalizedHostname);
 
@@ -75,7 +104,10 @@ export async function resolvePublicAddress(hostname: string): Promise<ResolvedAd
     return { address: normalizedHostname, family: literalFamily };
   }
 
-  const addresses = await lookup(normalizedHostname, { all: true, verbatim: true });
+  const lookupPromise = lookup(normalizedHostname, { all: true, verbatim: true });
+  const addresses = signal
+    ? await withAbortSignal(lookupPromise, signal)
+    : await lookupPromise;
   for (const { address, family } of addresses) {
     if ((family === 4 || family === 6) && isPublicIpAddress(address)) {
       return { address, family };

@@ -13,46 +13,60 @@ export type SiteCheckResult = {
   checkedAt: string;
 };
 
+export class SiteCheckTimeoutError extends Error {
+  override name = "SiteCheckTimeoutError";
+}
+
 export async function checkSite(url: URL): Promise<SiteCheckResult> {
-  const resolvedAddress = await resolvePublicAddress(url.hostname);
-  const request = url.protocol === "https:" ? requestHttps : requestHttp;
+  const timeoutSignal = AbortSignal.timeout(requestTimeoutMs);
   const startedAt = performance.now();
 
-  return new Promise((resolve, reject) => {
-    const outgoingRequest = request(
-      url,
-      {
-        method: "GET",
-        headers: {
-          accept: "*/*",
-          "user-agent": "WebHealthMonitor/0.1",
+  try {
+    const resolvedAddress = await resolvePublicAddress(url.hostname, timeoutSignal);
+    const request = url.protocol === "https:" ? requestHttps : requestHttp;
+
+    return await new Promise((resolve, reject) => {
+      const outgoingRequest = request(
+        url,
+        {
+          method: "GET",
+          headers: {
+            accept: "*/*",
+            "user-agent": "WebHealthMonitor/0.1",
+          },
+          lookup: (_hostname, options, callback) => {
+            if (options.all) {
+              callback(null, [resolvedAddress]);
+              return;
+            }
+
+            callback(null, resolvedAddress.address, resolvedAddress.family);
+          },
+          signal: timeoutSignal,
         },
-        lookup: (_hostname, options, callback) => {
-          if (options.all) {
-            callback(null, [resolvedAddress]);
-            return;
-          }
+        (response) => {
+          const status = response.statusCode ?? 0;
+          const responseTimeMs = Math.round(performance.now() - startedAt);
 
-          callback(null, resolvedAddress.address, resolvedAddress.family);
+          response.destroy();
+          resolve({
+            url: url.href,
+            status,
+            statusText: response.statusMessage ?? "",
+            responseTimeMs,
+            checkedAt: new Date().toISOString(),
+          });
         },
-        signal: AbortSignal.timeout(requestTimeoutMs),
-      },
-      (response) => {
-        const status = response.statusCode ?? 0;
-        const responseTimeMs = Math.round(performance.now() - startedAt);
+      );
 
-        response.destroy();
-        resolve({
-          url: url.href,
-          status,
-          statusText: response.statusMessage ?? "",
-          responseTimeMs,
-          checkedAt: new Date().toISOString(),
-        });
-      },
-    );
+      outgoingRequest.on("error", reject);
+      outgoingRequest.end();
+    });
+  } catch (error) {
+    if (timeoutSignal.aborted) {
+      throw new SiteCheckTimeoutError("サイトの確認がタイムアウトしました。");
+    }
 
-    outgoingRequest.on("error", reject);
-    outgoingRequest.end();
-  });
+    throw error;
+  }
 }
