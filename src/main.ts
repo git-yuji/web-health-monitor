@@ -143,7 +143,7 @@ app.innerHTML = `
     </main>
 
     <footer class="border-t border-slate-200 bg-white">
-      <div class="mx-auto flex w-full max-w-6xl flex-col gap-2 px-5 py-6 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+      <div class="mx-auto flex w-full max-w-6xl flex-col gap-2 px-5 py-6 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between sm:px-8">
         <p>© 2026 Web Health Monitor</p>
         <p>Simple monitoring for healthier websites.</p>
       </div>
