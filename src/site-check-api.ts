@@ -3,8 +3,25 @@ export type SiteCheckResult = {
   status: number;
   statusText: string;
   responseTimeMs: number;
+  sslCertificate: {
+    expiresAt: string;
+    daysRemaining: number;
+  } | null;
   checkedAt: string;
 };
+
+function isSslCertificateInfo(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const certificate = value as Record<string, unknown>;
+
+  return (
+    typeof certificate.expiresAt === "string" &&
+    typeof certificate.daysRemaining === "number"
+  );
+}
 
 function isSiteCheckResult(value: unknown): value is SiteCheckResult {
   if (typeof value !== "object" || value === null) {
@@ -18,6 +35,7 @@ function isSiteCheckResult(value: unknown): value is SiteCheckResult {
     typeof result.status === "number" &&
     typeof result.statusText === "string" &&
     typeof result.responseTimeMs === "number" &&
+    (result.sslCertificate === null || isSslCertificateInfo(result.sslCertificate)) &&
     typeof result.checkedAt === "string"
   );
 }

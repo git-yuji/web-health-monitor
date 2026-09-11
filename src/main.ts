@@ -56,7 +56,7 @@ app.innerHTML = `
               </button>
             </div>
           </form>
-          <p id="url-form-message" class="mt-3 text-xs text-slate-600" aria-live="polite">URLを入力するとHTTPステータスと応答時間を確認できます。その他の項目は完成イメージです。</p>
+          <p id="url-form-message" class="mt-3 text-xs text-slate-600" aria-live="polite">URLを入力するとHTTPステータス、応答時間、SSL証明書の期限を確認できます。稼働率は完成イメージです。</p>
         </div>
 
         <div class="relative mx-auto min-w-0 w-full max-w-lg">
@@ -84,7 +84,7 @@ app.innerHTML = `
               </div>
               <div class="rounded-2xl bg-white/6 p-4 ring-1 ring-inset ring-white/8">
                 <p class="text-xs text-slate-400">SSL EXPIRES</p>
-                <p class="mt-2 text-2xl font-semibold text-white">72 <span class="text-sm font-normal text-slate-400">日</span></p>
+                <p class="mt-2 text-2xl font-semibold text-white"><span id="ssl-days-remaining">-</span> <span id="ssl-days-unit" class="text-sm font-normal text-slate-400">未確認</span></p>
               </div>
               <div class="rounded-2xl bg-white/6 p-4 ring-1 ring-inset ring-white/8">
                 <p class="text-xs text-slate-400">UPTIME</p>
@@ -174,8 +174,10 @@ const siteStatusLabel = getRequiredElement<HTMLElement>(app, "#site-status-label
 const httpStatus = getRequiredElement<HTMLElement>(app, "#http-status");
 const httpStatusText = getRequiredElement<HTMLElement>(app, "#http-status-text");
 const responseTime = getRequiredElement<HTMLElement>(app, "#response-time");
+const sslDaysRemaining = getRequiredElement<HTMLElement>(app, "#ssl-days-remaining");
+const sslDaysUnit = getRequiredElement<HTMLElement>(app, "#ssl-days-unit");
 
-const defaultMessage = "URLを入力するとHTTPステータスと応答時間を確認できます。その他の項目は完成イメージです。";
+const defaultMessage = "URLを入力するとHTTPステータス、応答時間、SSL証明書の期限を確認できます。稼働率は完成イメージです。";
 type MessageColorClass = "text-slate-600" | "text-red-700" | "text-emerald-700";
 
 function setFormMessage(message: string, colorClass: MessageColorClass): void {
@@ -197,6 +199,8 @@ function renderSiteCheck(result: SiteCheckResult): void {
   httpStatus.textContent = result.status.toString();
   httpStatusText.textContent = result.statusText;
   responseTime.textContent = result.responseTimeMs.toString();
+  sslDaysRemaining.textContent = result.sslCertificate?.daysRemaining.toString() ?? "-";
+  sslDaysUnit.textContent = result.sslCertificate ? "日" : "対象外";
   siteStatusLabel.textContent = isHealthy ? "正常応答" : "要確認";
   siteStatus.classList.toggle("bg-emerald-400/10", isHealthy);
   siteStatus.classList.toggle("text-emerald-300", isHealthy);
@@ -228,7 +232,7 @@ urlForm.addEventListener("submit", async (event) => {
     const siteCheck = await requestSiteCheck(result.url.href);
     renderSiteCheck(siteCheck);
     setFormMessage(
-      "HTTPステータスと応答時間を取得しました。その他の項目は完成イメージです。",
+      "HTTPステータス、応答時間、SSL証明書の期限を取得しました。稼働率は完成イメージです。",
       "text-emerald-700",
     );
   } catch (error) {
