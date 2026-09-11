@@ -26,15 +26,17 @@ const secondResult: SiteCheckResult = {
   checkedAt: "2026-09-11T00:05:00.000Z",
 };
 
-test("診断結果をJSON Lines形式で追記保存する", async (context) => {
+test("同時に受け取った診断結果を呼び出し順に追記保存する", async (context) => {
   const temporaryDirectory = await mkdtemp(
     join(tmpdir(), "web-health-monitor-result-store-"),
   );
   context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
   const filePath = join(temporaryDirectory, "data", "results.jsonl");
 
-  await saveSiteCheckResult(firstResult, filePath);
-  await saveSiteCheckResult(secondResult, filePath);
+  await Promise.all([
+    saveSiteCheckResult(firstResult, filePath),
+    saveSiteCheckResult(secondResult, filePath),
+  ]);
 
   const lines = (await readFile(filePath, "utf8")).trim().split("\n");
 
@@ -52,5 +54,13 @@ test("保存できない場合は専用エラーを返す", async (context) => {
   await assert.rejects(
     saveSiteCheckResult(firstResult, join(blockingFilePath, "results.jsonl")),
     ResultStorageError,
+  );
+
+  const recoveryFilePath = join(temporaryDirectory, "recovery", "results.jsonl");
+  await saveSiteCheckResult(secondResult, recoveryFilePath);
+
+  assert.deepEqual(
+    JSON.parse((await readFile(recoveryFilePath, "utf8")).trim()),
+    secondResult,
   );
 });
