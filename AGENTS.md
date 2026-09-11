@@ -1,5 +1,11 @@
 # Repository Rules
 
+## Codex reviews
+
+- Codexによるプルリクエストのレビューコメントは日本語で書く。
+- 指摘のタイトル、問題の説明、修正案を日本語で記述する。
+- コード上の識別子、コマンド、ファイルパスなどは必要に応じて原文のまま記述してよい。
+
 ## Commit messages
 
 - コミットメッセージには英語の接頭辞を付ける。
@@ -41,4 +47,3 @@ fix/ssl-expiration
 docs/setup-guide
 chore/update-dependencies
 ```
-
