@@ -235,7 +235,7 @@ urlForm.addEventListener("submit", async (event) => {
     const siteCheck = await requestSiteCheck(result.url.href);
     renderSiteCheck(siteCheck);
     setFormMessage(
-      "HTTPステータス、応答時間、SSL証明書の期限を取得しました。稼働率は完成イメージです。",
+      "HTTPステータス、応答時間、SSL証明書の期限を取得し、診断結果を保存しました。稼働率は完成イメージです。",
       "text-emerald-700",
     );
   } catch (error) {
