@@ -4,6 +4,7 @@ import {
   requestSiteCheckHistory,
   type SiteCheckResult,
 } from "./site-check-api";
+import { createResponseTimeChart } from "./response-time-chart";
 import { validateTargetUrl } from "./url-validation";
 
 const app = document.querySelector<HTMLElement>("#app");
@@ -99,17 +100,18 @@ app.innerHTML = `
             <div class="rounded-2xl bg-white/6 p-4 ring-1 ring-inset ring-white/8">
               <div class="mb-4 flex items-center justify-between">
                 <p class="text-xs font-medium text-slate-300">応答時間</p>
-                <p class="text-xs text-slate-500">過去24時間</p>
+                <p id="response-chart-range" class="text-xs text-slate-500">データなし</p>
               </div>
-              <svg viewBox="0 0 400 80" class="block h-20 min-w-0 w-full max-w-full" preserveAspectRatio="none" aria-label="応答時間のサンプルグラフ">
+              <svg id="response-chart" viewBox="0 0 400 80" class="block h-20 min-w-0 w-full max-w-full" preserveAspectRatio="none" role="img" aria-label="応答時間の履歴はまだありません">
                 <defs>
                   <linearGradient id="chart-fill" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stop-color="#34d399" stop-opacity="0.35" />
                     <stop offset="100%" stop-color="#34d399" stop-opacity="0" />
                   </linearGradient>
                 </defs>
-                <path d="M0 61 C30 57,45 66,70 51 S115 45,140 48 S185 28,210 38 S250 42,275 25 S320 34,345 18 S380 21,400 12 V80 H0Z" fill="url(#chart-fill)" />
-                <path d="M0 61 C30 57,45 66,70 51 S115 45,140 48 S185 28,210 38 S250 42,275 25 S320 34,345 18 S380 21,400 12" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" />
+                <path id="response-chart-area" fill="url(#chart-fill)" />
+                <path id="response-chart-line" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                <g id="response-chart-points"></g>
               </svg>
             </div>
           </div>
@@ -193,6 +195,11 @@ const sslDaysRemaining = getRequiredElement<HTMLElement>(app, "#ssl-days-remaini
 const sslDaysUnit = getRequiredElement<HTMLElement>(app, "#ssl-days-unit");
 const historyMessage = getRequiredElement<HTMLElement>(app, "#history-message");
 const historyList = getRequiredElement<HTMLElement>(app, "#history-list");
+const responseChart = getRequiredElement<SVGElement>(app, "#response-chart");
+const responseChartRange = getRequiredElement<HTMLElement>(app, "#response-chart-range");
+const responseChartArea = getRequiredElement<SVGPathElement>(app, "#response-chart-area");
+const responseChartLine = getRequiredElement<SVGPathElement>(app, "#response-chart-line");
+const responseChartPoints = getRequiredElement<SVGGElement>(app, "#response-chart-points");
 
 const defaultMessage = "URLを入力するとHTTPステータス、応答時間、SSL証明書の期限を確認できます。稼働率は完成イメージです。";
 type MessageColorClass = "text-slate-600" | "text-red-700" | "text-emerald-700";
@@ -237,8 +244,44 @@ function renderSiteCheck(result: SiteCheckResult): void {
   siteStatusDot.classList.toggle("bg-red-400", !isHealthy);
 }
 
+function renderResponseTimeTrend(results: SiteCheckResult[]): void {
+  const chronologicalResults = [...results].reverse();
+  const chart = createResponseTimeChart(
+    chronologicalResults.map((result) => result.responseTimeMs),
+  );
+
+  responseChartArea.setAttribute("d", chart.areaPath);
+  responseChartLine.setAttribute("d", chart.linePath);
+  responseChartPoints.replaceChildren();
+  responseChartRange.textContent =
+    results.length === 0 ? "データなし" : `最新${results.length}件`;
+  responseChart.setAttribute(
+    "aria-label",
+    results.length === 0
+      ? "応答時間の履歴はまだありません"
+      : `最新${results.length}件の応答時間の推移`,
+  );
+
+  for (const [index, point] of chart.points.entries()) {
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    circle.setAttribute("cx", point.x.toString());
+    circle.setAttribute("cy", point.y.toString());
+    circle.setAttribute("r", "3");
+    circle.setAttribute("fill", "#34d399");
+    title.textContent = `${chronologicalResults[index]?.responseTimeMs ?? 0} ms`;
+    circle.append(title);
+    responseChartPoints.append(circle);
+  }
+}
+
 function renderHistory(results: SiteCheckResult[]): void {
   historyList.replaceChildren();
+  const latestResult = results[0];
+  const chartResults = latestResult
+    ? results.filter((result) => result.url === latestResult.url)
+    : [];
+  renderResponseTimeTrend(chartResults);
 
   if (results.length === 0) {
     historyMessage.textContent = "保存された診断結果はまだありません。";
@@ -246,6 +289,8 @@ function renderHistory(results: SiteCheckResult[]): void {
     historyMessage.classList.add("text-slate-600");
     return;
   }
+
+  renderSiteCheck(latestResult);
 
   historyMessage.textContent = `最新${results.length}件を表示しています。`;
   historyMessage.classList.remove("text-red-700");
