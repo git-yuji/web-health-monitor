@@ -61,6 +61,26 @@ test("診断履歴を指定件数まで読み込む", async (context) => {
   assert.deepEqual(await loadSiteCheckResults(filePath, 1), [secondResult]);
 });
 
+test("大きな履歴ファイルの末尾から最新20件だけを読み込む", async (context) => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "web-health-monitor-large-history-"),
+  );
+  context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
+  const filePath = join(temporaryDirectory, "results.jsonl");
+  const latestResults = Array.from({ length: 20 }, (_, index) => ({
+    ...firstResult,
+    responseTimeMs: index,
+    checkedAt: new Date(Date.UTC(2026, 8, 11, 0, index)).toISOString(),
+  }));
+  const latestLines = latestResults.map((result) => JSON.stringify(result)).join("\n");
+  await writeFile(filePath, `${"invalid".repeat(20_000)}\n${latestLines}\n`, "utf8");
+
+  assert.deepEqual(
+    await loadSiteCheckResults(filePath),
+    [...latestResults].reverse(),
+  );
+});
+
 test("保存ファイルがない場合は空の診断履歴を返す", async (context) => {
   const temporaryDirectory = await mkdtemp(
     join(tmpdir(), "web-health-monitor-empty-history-"),
