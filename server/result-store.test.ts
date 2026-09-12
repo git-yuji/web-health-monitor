@@ -81,6 +81,34 @@ test("大きな履歴ファイルの末尾から最新20件だけを読み込む
   );
 });
 
+test("URLで絞り込んでから最新件数を制限する", async (context) => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "web-health-monitor-url-history-"),
+  );
+  context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
+  const filePath = join(temporaryDirectory, "results.jsonl");
+  const otherResults = Array.from({ length: 20 }, (_, index) => ({
+    ...firstResult,
+    url: "https://example.org/",
+    checkedAt: new Date(Date.UTC(2026, 8, 11, 0, index + 1)).toISOString(),
+  }));
+  const latestTargetResult = {
+    ...secondResult,
+    checkedAt: "2026-09-11T01:00:00.000Z",
+  };
+  const results = [firstResult, ...otherResults, latestTargetResult];
+  await writeFile(
+    filePath,
+    `${results.map((result) => JSON.stringify(result)).join("\n")}\n`,
+    "utf8",
+  );
+
+  assert.deepEqual(
+    await loadSiteCheckResults(filePath, 20, firstResult.url),
+    [latestTargetResult, firstResult],
+  );
+});
+
 test("保存ファイルがない場合は空の診断履歴を返す", async (context) => {
   const temporaryDirectory = await mkdtemp(
     join(tmpdir(), "web-health-monitor-empty-history-"),

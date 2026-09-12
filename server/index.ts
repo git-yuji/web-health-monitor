@@ -108,9 +108,35 @@ async function handleCheckRequest(
   }
 }
 
-async function handleResultsRequest(response: ServerResponse): Promise<void> {
+async function handleResultsRequest(
+  requestUrl: URL,
+  response: ServerResponse,
+): Promise<void> {
+  const urlValue = requestUrl.searchParams.get("url");
+  let targetUrl: string | undefined;
+
+  if (urlValue !== null) {
+    const validationResult = validateTargetUrl(urlValue);
+
+    if (!validationResult.valid) {
+      sendJson(response, 400, {
+        message: validationResult.message,
+      } satisfies ErrorResponse);
+      return;
+    }
+
+    if (validationResult.url.username || validationResult.url.password) {
+      sendJson(response, 400, {
+        message: "認証情報を含むURLは指定できません。",
+      } satisfies ErrorResponse);
+      return;
+    }
+
+    targetUrl = validationResult.url.href;
+  }
+
   try {
-    const results = await loadSiteCheckResults();
+    const results = await loadSiteCheckResults(undefined, 20, targetUrl);
     sendJson(response, 200, { results });
   } catch (error) {
     sendJson(response, 500, { message: getErrorMessage(error) } satisfies ErrorResponse);
@@ -126,7 +152,7 @@ const server = createServer((request, response) => {
   }
 
   if (request.method === "GET" && requestUrl.pathname === "/api/results") {
-    void handleResultsRequest(response);
+    void handleResultsRequest(requestUrl, response);
     return;
   }
 

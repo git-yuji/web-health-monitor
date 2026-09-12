@@ -278,10 +278,6 @@ function renderResponseTimeTrend(results: SiteCheckResult[]): void {
 function renderHistory(results: SiteCheckResult[]): void {
   historyList.replaceChildren();
   const latestResult = results[0];
-  const chartResults = latestResult
-    ? results.filter((result) => result.url === latestResult.url)
-    : [];
-  renderResponseTimeTrend(chartResults);
 
   if (results.length === 0) {
     historyMessage.textContent = "保存された診断結果はまだありません。";
@@ -337,14 +333,34 @@ function renderHistory(results: SiteCheckResult[]): void {
   }
 }
 
-async function refreshHistory(): Promise<void> {
+async function refreshHistory(chartUrl?: string): Promise<void> {
+  let results: SiteCheckResult[];
+
   try {
-    renderHistory(await requestSiteCheckHistory());
+    results = await requestSiteCheckHistory();
+    renderHistory(results);
   } catch (error) {
+    renderResponseTimeTrend([]);
     historyMessage.textContent =
       error instanceof Error ? error.message : "診断履歴を取得できませんでした。";
     historyMessage.classList.remove("text-slate-600");
     historyMessage.classList.add("text-red-700");
+    return;
+  }
+
+  const targetUrl = chartUrl ?? results[0]?.url;
+
+  if (targetUrl === undefined) {
+    renderResponseTimeTrend([]);
+    return;
+  }
+
+  try {
+    renderResponseTimeTrend(await requestSiteCheckHistory(targetUrl));
+  } catch {
+    renderResponseTimeTrend([]);
+    responseChartRange.textContent = "読み込み失敗";
+    responseChart.setAttribute("aria-label", "応答時間の履歴を読み込めませんでした");
   }
 }
 
@@ -371,7 +387,7 @@ urlForm.addEventListener("submit", async (event) => {
       "HTTPステータス、応答時間、SSL証明書の期限を取得し、診断結果を保存しました。稼働率は完成イメージです。",
       "text-emerald-700",
     );
-    await refreshHistory();
+    await refreshHistory(siteCheck.url);
   } catch (error) {
     const message = error instanceof Error ? error.message : "サイトの確認に失敗しました。";
     setFormMessage(message, "text-red-700");

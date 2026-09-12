@@ -61,37 +61,79 @@ function enqueueStorageOperation<T>(operation: () => Promise<T>): Promise<T> {
   return queuedOperation;
 }
 
-async function readLatestLines(filePath: string, limit: number): Promise<string[]> {
+function parseSiteCheckResult(line: string): SiteCheckResult {
+  const result: unknown = JSON.parse(line);
+
+  if (!isSiteCheckResult(result)) {
+    throw new Error("保存された診断結果の形式が正しくありません。");
+  }
+
+  return result;
+}
+
+async function readLatestResults(
+  filePath: string,
+  limit: number,
+  targetUrl?: string,
+): Promise<SiteCheckResult[]> {
+  if (limit < 1) {
+    return [];
+  }
+
   const file = await open(filePath, "r");
 
   try {
     const { size } = await file.stat();
-    const chunks: Buffer[] = [];
+    const results: SiteCheckResult[] = [];
     let position = size;
-    let newlineCount = 0;
+    let remainder = Buffer.alloc(0);
 
-    while (position > 0 && newlineCount <= limit) {
+    while (position > 0 && results.length < limit) {
       const bytesToRead = Math.min(readChunkBytes, position);
       position -= bytesToRead;
       const buffer = Buffer.allocUnsafe(bytesToRead);
       const { bytesRead } = await file.read(buffer, 0, bytesToRead, position);
       const chunk = buffer.subarray(0, bytesRead);
-      chunks.push(chunk);
+      const content = Buffer.concat([chunk, remainder]);
+      let lineEnd = content.length;
 
-      for (const byte of chunk) {
-        if (byte === 0x0a) {
-          newlineCount += 1;
+      for (let index = content.length - 1; index >= 0; index -= 1) {
+        if (content[index] !== 0x0a) {
+          continue;
         }
+
+        const line = content.subarray(index + 1, lineEnd).toString("utf8").trim();
+        lineEnd = index;
+
+        if (line === "") {
+          continue;
+        }
+
+        const result = parseSiteCheckResult(line);
+
+        if (targetUrl === undefined || result.url === targetUrl) {
+          results.push(result);
+
+          if (results.length === limit) {
+            return results;
+          }
+        }
+      }
+
+      remainder = content.subarray(0, lineEnd);
+    }
+
+    const firstLine = remainder.toString("utf8").trim();
+
+    if (firstLine !== "" && results.length < limit) {
+      const result = parseSiteCheckResult(firstLine);
+
+      if (targetUrl === undefined || result.url === targetUrl) {
+        results.push(result);
       }
     }
 
-    const lines = Buffer.concat(chunks.reverse()).toString("utf8").split("\n");
-
-    if (position > 0) {
-      lines.shift();
-    }
-
-    return lines.filter((line) => line.trim() !== "").slice(-limit);
+    return results;
   } finally {
     await file.close();
   }
@@ -118,18 +160,12 @@ export async function saveSiteCheckResult(
 export async function loadSiteCheckResults(
   filePath = defaultResultsFilePath,
   limit = 20,
+  targetUrl?: string,
 ): Promise<SiteCheckResult[]> {
   try {
-    const results = await enqueueStorageOperation(async () => {
-      const lines = await readLatestLines(filePath, limit);
-      return lines.map((line) => JSON.parse(line) as unknown);
-    });
-
-    if (!results.every(isSiteCheckResult)) {
-      throw new Error("保存された診断結果の形式が正しくありません。");
-    }
-
-    return results.reverse();
+    return await enqueueStorageOperation(() =>
+      readLatestResults(filePath, limit, targetUrl),
+    );
   } catch (error) {
     if (isFileNotFoundError(error)) {
       return [];
