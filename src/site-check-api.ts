@@ -80,8 +80,11 @@ export async function requestSiteCheck(url: string): Promise<SiteCheckResult> {
 }
 
 export async function requestSiteCheckHistory(url?: string): Promise<SiteCheckResult[]> {
-  const query = url === undefined ? "" : `?${new URLSearchParams({ url })}`;
-  const response = await fetch(`/api/results${query}`);
+  const response = await fetch("/api/results", {
+    method: url === undefined ? "GET" : "POST",
+    headers: url === undefined ? undefined : { "content-type": "application/json" },
+    body: url === undefined ? undefined : JSON.stringify({ url }),
+  });
   let responseBody: unknown;
 
   try {

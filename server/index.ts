@@ -15,6 +15,10 @@ type ErrorResponse = {
   message: string;
 };
 
+type TargetUrlResult =
+  | { valid: true; url: URL }
+  | { valid: false; message: string };
+
 function sendJson(
   response: ServerResponse,
   statusCode: number,
@@ -54,6 +58,32 @@ function getErrorMessage(error: unknown): string {
   return "サイトの確認に失敗しました。";
 }
 
+function getTargetUrl(body: unknown): TargetUrlResult {
+  const urlValue =
+    typeof body === "object" && body !== null && "url" in body
+      ? (body as { url?: unknown }).url
+      : undefined;
+
+  if (typeof urlValue !== "string") {
+    return { valid: false, message: "URLを指定してください。" };
+  }
+
+  const validationResult = validateTargetUrl(urlValue);
+
+  if (!validationResult.valid) {
+    return validationResult;
+  }
+
+  if (validationResult.url.username || validationResult.url.password) {
+    return {
+      valid: false,
+      message: "認証情報を含むURLは指定できません。",
+    };
+  }
+
+  return validationResult;
+}
+
 async function handleCheckRequest(
   request: IncomingMessage,
   response: ServerResponse,
@@ -67,32 +97,15 @@ async function handleCheckRequest(
     return;
   }
 
-  const urlValue =
-    typeof body === "object" && body !== null && "url" in body
-      ? (body as { url?: unknown }).url
-      : undefined;
+  const targetUrl = getTargetUrl(body);
 
-  if (typeof urlValue !== "string") {
-    sendJson(response, 400, { message: "URLを指定してください。" } satisfies ErrorResponse);
-    return;
-  }
-
-  const validationResult = validateTargetUrl(urlValue);
-
-  if (!validationResult.valid) {
-    sendJson(response, 400, { message: validationResult.message } satisfies ErrorResponse);
-    return;
-  }
-
-  if (validationResult.url.username || validationResult.url.password) {
-    sendJson(response, 400, {
-      message: "認証情報を含むURLは指定できません。",
-    } satisfies ErrorResponse);
+  if (!targetUrl.valid) {
+    sendJson(response, 400, { message: targetUrl.message } satisfies ErrorResponse);
     return;
   }
 
   try {
-    const result = await checkSite(validationResult.url);
+    const result = await checkSite(targetUrl.url);
     await saveSiteCheckResult(result);
     sendJson(response, 200, result);
   } catch (error) {
@@ -108,35 +121,37 @@ async function handleCheckRequest(
   }
 }
 
-async function handleResultsRequest(
-  requestUrl: URL,
+async function handleResultsRequest(response: ServerResponse): Promise<void> {
+  try {
+    const results = await loadSiteCheckResults();
+    sendJson(response, 200, { results });
+  } catch (error) {
+    sendJson(response, 500, { message: getErrorMessage(error) } satisfies ErrorResponse);
+  }
+}
+
+async function handleResultsByUrlRequest(
+  request: IncomingMessage,
   response: ServerResponse,
 ): Promise<void> {
-  const urlValue = requestUrl.searchParams.get("url");
-  let targetUrl: string | undefined;
+  let body: unknown;
 
-  if (urlValue !== null) {
-    const validationResult = validateTargetUrl(urlValue);
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    sendJson(response, 400, { message: getErrorMessage(error) } satisfies ErrorResponse);
+    return;
+  }
 
-    if (!validationResult.valid) {
-      sendJson(response, 400, {
-        message: validationResult.message,
-      } satisfies ErrorResponse);
-      return;
-    }
+  const targetUrl = getTargetUrl(body);
 
-    if (validationResult.url.username || validationResult.url.password) {
-      sendJson(response, 400, {
-        message: "認証情報を含むURLは指定できません。",
-      } satisfies ErrorResponse);
-      return;
-    }
-
-    targetUrl = validationResult.url.href;
+  if (!targetUrl.valid) {
+    sendJson(response, 400, { message: targetUrl.message } satisfies ErrorResponse);
+    return;
   }
 
   try {
-    const results = await loadSiteCheckResults(undefined, 20, targetUrl);
+    const results = await loadSiteCheckResults(undefined, 20, targetUrl.url.href);
     sendJson(response, 200, { results });
   } catch (error) {
     sendJson(response, 500, { message: getErrorMessage(error) } satisfies ErrorResponse);
@@ -152,7 +167,12 @@ const server = createServer((request, response) => {
   }
 
   if (request.method === "GET" && requestUrl.pathname === "/api/results") {
-    void handleResultsRequest(requestUrl, response);
+    void handleResultsRequest(response);
+    return;
+  }
+
+  if (request.method === "POST" && requestUrl.pathname === "/api/results") {
+    void handleResultsByUrlRequest(request, response);
     return;
   }
 
