@@ -79,8 +79,12 @@ export async function requestSiteCheck(url: string): Promise<SiteCheckResult> {
   return responseBody;
 }
 
-export async function requestSiteCheckHistory(): Promise<SiteCheckResult[]> {
-  const response = await fetch("/api/results");
+export async function requestSiteCheckHistory(url?: string): Promise<SiteCheckResult[]> {
+  const response = await fetch("/api/results", {
+    method: url === undefined ? "GET" : "POST",
+    headers: url === undefined ? undefined : { "content-type": "application/json" },
+    body: url === undefined ? undefined : JSON.stringify({ url }),
+  });
   let responseBody: unknown;
 
   try {

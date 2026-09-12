@@ -10,5 +10,9 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["server/**/*.ts", "src/url-validation.ts"]
+  "include": [
+    "server/**/*.ts",
+    "src/response-time-chart.ts",
+    "src/url-validation.ts"
+  ]
 }
