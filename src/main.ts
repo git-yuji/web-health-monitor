@@ -258,8 +258,9 @@ function renderHistory(results: SiteCheckResult[]): void {
       "flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between";
 
     const summary = document.createElement("div");
+    summary.className = "min-w-0";
     const url = document.createElement("p");
-    url.className = "font-semibold text-slate-950";
+    url.className = "break-all font-semibold text-slate-950";
     url.textContent = result.url;
 
     const details = document.createElement("p");
