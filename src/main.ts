@@ -1,5 +1,9 @@
 import "./style.css";
-import { requestSiteCheck, type SiteCheckResult } from "./site-check-api";
+import {
+  requestSiteCheck,
+  requestSiteCheckHistory,
+  type SiteCheckResult,
+} from "./site-check-api";
 import { validateTargetUrl } from "./url-validation";
 
 const app = document.querySelector<HTMLElement>("#app");
@@ -113,6 +117,17 @@ app.innerHTML = `
       </div>
       </section>
 
+      <section class="border-b border-slate-200/80 bg-slate-50">
+        <div class="mx-auto w-full max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
+          <div class="mb-8">
+            <p class="text-xs font-bold tracking-[0.16em] text-emerald-700">RECENT CHECKS</p>
+            <h2 class="mt-3 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">診断履歴</h2>
+            <p id="history-message" class="mt-3 text-sm text-slate-600" aria-live="polite">診断履歴を読み込んでいます。</p>
+          </div>
+          <div id="history-list" class="grid gap-3"></div>
+        </div>
+      </section>
+
       <section class="mx-auto w-full max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
       <div class="mb-8 max-w-xl">
         <p class="text-xs font-bold tracking-[0.16em] text-emerald-700">WHAT WE CHECK</p>
@@ -176,6 +191,8 @@ const httpStatusText = getRequiredElement<HTMLElement>(app, "#http-status-text")
 const responseTime = getRequiredElement<HTMLElement>(app, "#response-time");
 const sslDaysRemaining = getRequiredElement<HTMLElement>(app, "#ssl-days-remaining");
 const sslDaysUnit = getRequiredElement<HTMLElement>(app, "#ssl-days-unit");
+const historyMessage = getRequiredElement<HTMLElement>(app, "#history-message");
+const historyList = getRequiredElement<HTMLElement>(app, "#history-list");
 
 const defaultMessage = "URLを入力するとHTTPステータス、応答時間、SSL証明書の期限を確認できます。稼働率は完成イメージです。";
 type MessageColorClass = "text-slate-600" | "text-red-700" | "text-emerald-700";
@@ -192,11 +209,16 @@ function setLoading(isLoading: boolean): void {
   submitButton.textContent = isLoading ? "確認中..." : "サイトを確認";
 }
 
-function renderSiteCheck(result: SiteCheckResult): void {
-  const isHealthy =
+function isHealthySiteCheck(result: SiteCheckResult): boolean {
+  return (
     result.status >= 200 &&
     result.status < 400 &&
-    result.sslCertificate?.valid !== false;
+    result.sslCertificate?.valid !== false
+  );
+}
+
+function renderSiteCheck(result: SiteCheckResult): void {
+  const isHealthy = isHealthySiteCheck(result);
 
   monitoredSite.textContent = new URL(result.url).hostname;
   httpStatus.textContent = result.status.toString();
@@ -213,6 +235,72 @@ function renderSiteCheck(result: SiteCheckResult): void {
   siteStatus.classList.toggle("ring-red-400/20", !isHealthy);
   siteStatusDot.classList.toggle("bg-emerald-400", isHealthy);
   siteStatusDot.classList.toggle("bg-red-400", !isHealthy);
+}
+
+function renderHistory(results: SiteCheckResult[]): void {
+  historyList.replaceChildren();
+
+  if (results.length === 0) {
+    historyMessage.textContent = "保存された診断結果はまだありません。";
+    historyMessage.classList.remove("text-red-700");
+    historyMessage.classList.add("text-slate-600");
+    return;
+  }
+
+  historyMessage.textContent = `最新${results.length}件を表示しています。`;
+  historyMessage.classList.remove("text-red-700");
+  historyMessage.classList.add("text-slate-600");
+
+  for (const result of results) {
+    const isHealthy = isHealthySiteCheck(result);
+    const item = document.createElement("article");
+    item.className =
+      "flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between";
+
+    const summary = document.createElement("div");
+    summary.className = "min-w-0";
+    const url = document.createElement("p");
+    url.className = "break-all font-semibold text-slate-950";
+    url.textContent = result.url;
+
+    const details = document.createElement("p");
+    details.className = "mt-1 text-sm text-slate-600";
+    const ssl = result.sslCertificate
+      ? `SSL ${result.sslCertificate.daysRemaining}日`
+      : "SSL 対象外";
+    details.textContent = `HTTP ${result.status} ${result.statusText} · ${result.responseTimeMs} ms · ${ssl}`;
+    summary.append(url, details);
+
+    const metadata = document.createElement("div");
+    metadata.className = "flex shrink-0 items-center gap-3";
+    const status = document.createElement("span");
+    status.className = isHealthy
+      ? "rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+      : "rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700";
+    status.textContent = isHealthy ? "正常" : "要確認";
+
+    const checkedAt = document.createElement("time");
+    checkedAt.className = "text-xs text-slate-500";
+    checkedAt.dateTime = result.checkedAt;
+    checkedAt.textContent = new Intl.DateTimeFormat("ja-JP", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(result.checkedAt));
+    metadata.append(status, checkedAt);
+    item.append(summary, metadata);
+    historyList.append(item);
+  }
+}
+
+async function refreshHistory(): Promise<void> {
+  try {
+    renderHistory(await requestSiteCheckHistory());
+  } catch (error) {
+    historyMessage.textContent =
+      error instanceof Error ? error.message : "診断履歴を取得できませんでした。";
+    historyMessage.classList.remove("text-slate-600");
+    historyMessage.classList.add("text-red-700");
+  }
 }
 
 urlForm.addEventListener("submit", async (event) => {
@@ -238,6 +326,7 @@ urlForm.addEventListener("submit", async (event) => {
       "HTTPステータス、応答時間、SSL証明書の期限を取得し、診断結果を保存しました。稼働率は完成イメージです。",
       "text-emerald-700",
     );
+    await refreshHistory();
   } catch (error) {
     const message = error instanceof Error ? error.message : "サイトの確認に失敗しました。";
     setFormMessage(message, "text-red-700");
@@ -250,3 +339,5 @@ urlInput.addEventListener("input", () => {
   urlInput.removeAttribute("aria-invalid");
   setFormMessage(defaultMessage, "text-slate-600");
 });
+
+void refreshHistory();

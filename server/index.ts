@@ -1,7 +1,11 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { checkSite, SiteCheckTimeoutError } from "./check-site.js";
 import { UnsafeTargetError } from "./network-policy.js";
-import { ResultStorageError, saveSiteCheckResult } from "./result-store.js";
+import {
+  loadSiteCheckResults,
+  ResultStorageError,
+  saveSiteCheckResult,
+} from "./result-store.js";
 import { validateTargetUrl } from "../src/url-validation.js";
 
 const port = 3000;
@@ -104,11 +108,25 @@ async function handleCheckRequest(
   }
 }
 
+async function handleResultsRequest(response: ServerResponse): Promise<void> {
+  try {
+    const results = await loadSiteCheckResults();
+    sendJson(response, 200, { results });
+  } catch (error) {
+    sendJson(response, 500, { message: getErrorMessage(error) } satisfies ErrorResponse);
+  }
+}
+
 const server = createServer((request, response) => {
   const requestUrl = new URL(request.url ?? "/", "http://localhost");
 
   if (request.method === "POST" && requestUrl.pathname === "/api/check") {
     void handleCheckRequest(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/results") {
+    void handleResultsRequest(response);
     return;
   }
 

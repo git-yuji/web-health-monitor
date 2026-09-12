@@ -78,3 +78,30 @@ export async function requestSiteCheck(url: string): Promise<SiteCheckResult> {
 
   return responseBody;
 }
+
+export async function requestSiteCheckHistory(): Promise<SiteCheckResult[]> {
+  const response = await fetch("/api/results");
+  let responseBody: unknown;
+
+  try {
+    responseBody = await response.json();
+  } catch {
+    throw new Error("診断履歴APIから読み取れないレスポンスを受信しました。");
+  }
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(responseBody) ?? "診断履歴を取得できませんでした。");
+  }
+
+  if (
+    typeof responseBody !== "object" ||
+    responseBody === null ||
+    !("results" in responseBody) ||
+    !Array.isArray(responseBody.results) ||
+    !responseBody.results.every(isSiteCheckResult)
+  ) {
+    throw new Error("診断履歴APIから不正なレスポンスを受信しました。");
+  }
+
+  return responseBody.results;
+}
