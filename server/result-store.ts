@@ -1,5 +1,6 @@
-import { appendFile, mkdir, open } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { access, appendFile, mkdir, open, rm, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import type { SiteCheckResult } from "./check-site.js";
 
 const defaultResultsFilePath = resolve(
@@ -8,6 +9,9 @@ const defaultResultsFilePath = resolve(
   "check-results.jsonl",
 );
 const readChunkBytes = 64 * 1024;
+const urlHistoryLimit = 20;
+const urlResultsDirectoryName = "url-results";
+const urlResultsIndexMarkerName = ".initialized";
 let pendingStorageOperation: Promise<unknown> = Promise.resolve();
 
 export class ResultStorageError extends Error {
@@ -59,6 +63,118 @@ function enqueueStorageOperation<T>(operation: () => Promise<T>): Promise<T> {
   const queuedOperation = pendingStorageOperation.then(operation);
   pendingStorageOperation = queuedOperation.catch(() => undefined);
   return queuedOperation;
+}
+
+function getUrlResultsDirectory(filePath: string): string {
+  return join(dirname(filePath), urlResultsDirectoryName);
+}
+
+function getUrlResultsFilePath(filePath: string, url: string): string {
+  const urlHash = createHash("sha256").update(url).digest("hex");
+  return join(getUrlResultsDirectory(filePath), `${urlHash}.jsonl`);
+}
+
+function getUrlResultsIndexMarkerPath(filePath: string): string {
+  return join(getUrlResultsDirectory(filePath), urlResultsIndexMarkerName);
+}
+
+function addToUrlIndex(
+  resultsByUrl: Map<string, SiteCheckResult[]>,
+  result: SiteCheckResult,
+): void {
+  const results = resultsByUrl.get(result.url) ?? [];
+  results.push(result);
+
+  if (results.length > urlHistoryLimit) {
+    results.shift();
+  }
+
+  resultsByUrl.set(result.url, results);
+}
+
+async function readResultsByUrl(
+  filePath: string,
+): Promise<Map<string, SiteCheckResult[]>> {
+  const file = await open(filePath, "r");
+
+  try {
+    const resultsByUrl = new Map<string, SiteCheckResult[]>();
+    const { size } = await file.stat();
+    let position = 0;
+    let remainder = Buffer.alloc(0);
+
+    while (position < size) {
+      const bytesToRead = Math.min(readChunkBytes, size - position);
+      const buffer = Buffer.allocUnsafe(bytesToRead);
+      const { bytesRead } = await file.read(buffer, 0, bytesToRead, position);
+
+      if (bytesRead === 0) {
+        break;
+      }
+
+      position += bytesRead;
+      const content = Buffer.concat([remainder, buffer.subarray(0, bytesRead)]);
+      let lineStart = 0;
+
+      for (let index = 0; index < content.length; index += 1) {
+        if (content[index] !== 0x0a) {
+          continue;
+        }
+
+        const line = content.subarray(lineStart, index).toString("utf8").trim();
+        lineStart = index + 1;
+
+        if (line !== "") {
+          addToUrlIndex(resultsByUrl, parseSiteCheckResult(line));
+        }
+      }
+
+      remainder = content.subarray(lineStart);
+    }
+
+    const finalLine = remainder.toString("utf8").trim();
+
+    if (finalLine !== "") {
+      addToUrlIndex(resultsByUrl, parseSiteCheckResult(finalLine));
+    }
+
+    return resultsByUrl;
+  } finally {
+    await file.close();
+  }
+}
+
+async function initializeUrlResultsIndex(filePath: string): Promise<void> {
+  const directoryPath = getUrlResultsDirectory(filePath);
+  const markerPath = getUrlResultsIndexMarkerPath(filePath);
+
+  try {
+    await access(markerPath);
+    return;
+  } catch (error) {
+    if (!isFileNotFoundError(error)) {
+      throw error;
+    }
+  }
+
+  let resultsByUrl = new Map<string, SiteCheckResult[]>();
+
+  try {
+    resultsByUrl = await readResultsByUrl(filePath);
+  } catch (error) {
+    if (!isFileNotFoundError(error)) {
+      throw error;
+    }
+  }
+
+  await mkdir(directoryPath, { recursive: true });
+
+  for (const [url, results] of resultsByUrl) {
+    const content = `${results.map((result) => JSON.stringify(result)).join("\n")}\n`;
+    await writeFile(getUrlResultsFilePath(filePath, url), content, "utf8");
+  }
+
+  await writeFile(markerPath, "1\n", "utf8");
 }
 
 function parseSiteCheckResult(line: string): SiteCheckResult {
@@ -144,8 +260,17 @@ export async function saveSiteCheckResult(
   filePath = defaultResultsFilePath,
 ): Promise<void> {
   const save = enqueueStorageOperation(async () => {
+    await initializeUrlResultsIndex(filePath);
     await mkdir(dirname(filePath), { recursive: true });
-    await appendFile(filePath, `${JSON.stringify(result)}\n`, "utf8");
+    const line = `${JSON.stringify(result)}\n`;
+    await appendFile(filePath, line, "utf8");
+
+    try {
+      await appendFile(getUrlResultsFilePath(filePath, result.url), line, "utf8");
+    } catch (error) {
+      await rm(getUrlResultsIndexMarkerPath(filePath), { force: true });
+      throw error;
+    }
   });
 
   try {
@@ -163,9 +288,26 @@ export async function loadSiteCheckResults(
   targetUrl?: string,
 ): Promise<SiteCheckResult[]> {
   try {
-    return await enqueueStorageOperation(() =>
-      readLatestResults(filePath, limit, targetUrl),
-    );
+    return await enqueueStorageOperation(async () => {
+      if (targetUrl === undefined) {
+        return readLatestResults(filePath, limit);
+      }
+
+      await initializeUrlResultsIndex(filePath);
+
+      try {
+        return await readLatestResults(
+          getUrlResultsFilePath(filePath, targetUrl),
+          limit,
+        );
+      } catch (error) {
+        if (isFileNotFoundError(error)) {
+          return [];
+        }
+
+        throw error;
+      }
+    });
   } catch (error) {
     if (isFileNotFoundError(error)) {
       return [];

@@ -107,6 +107,13 @@ test("URLで絞り込んでから最新件数を制限する", async (context) =
     await loadSiteCheckResults(filePath, 20, firstResult.url),
     [latestTargetResult, firstResult],
   );
+
+  await writeFile(filePath, "invalid global history\n", "utf8");
+
+  assert.deepEqual(
+    await loadSiteCheckResults(filePath, 20, firstResult.url),
+    [latestTargetResult, firstResult],
+  );
 });
 
 test("保存ファイルがない場合は空の診断履歴を返す", async (context) => {
