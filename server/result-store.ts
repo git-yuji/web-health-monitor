@@ -106,6 +106,14 @@ function getUrlResultsIndexMarkerPath(filePath: string): string {
   return join(getUrlResultsDirectory(filePath), urlResultsIndexMarkerName);
 }
 
+async function invalidateUrlResultsIndex(filePath: string): Promise<void> {
+  try {
+    await rm(getUrlResultsIndexMarkerPath(filePath), { force: true });
+  } catch {
+    // 本体の保存結果を優先し、索引の無効化失敗は次回の状態比較で検出する。
+  }
+}
+
 async function getFileState(filePath: string): Promise<ResultFileState> {
   try {
     const fileStat = await stat(filePath, { bigint: true });
@@ -374,9 +382,8 @@ export async function saveSiteCheckResult(
         `${JSON.stringify(await getFileState(filePath))}\n`,
         "utf8",
       );
-    } catch (error) {
-      await rm(getUrlResultsIndexMarkerPath(filePath), { force: true });
-      throw error;
+    } catch {
+      await invalidateUrlResultsIndex(filePath);
     }
   });
 

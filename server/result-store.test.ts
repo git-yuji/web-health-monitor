@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import {
   appendFile,
+  mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rename,
   rm,
   writeFile,
@@ -146,6 +148,40 @@ test("本体への追記後に中断してもURL別索引を再構築する", as
   await saveSiteCheckResult(firstResult, filePath);
   await appendFile(filePath, `${JSON.stringify(secondResult)}\n`, "utf8");
 
+  assert.deepEqual(
+    await loadSiteCheckResults(filePath, 20, firstResult.url),
+    [secondResult, firstResult],
+  );
+});
+
+test("URL別索引の更新に失敗しても本体への保存を成功扱いにする", async (context) => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "web-health-monitor-index-write-error-"),
+  );
+  context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
+  const filePath = join(temporaryDirectory, "results.jsonl");
+
+  await saveSiteCheckResult(firstResult, filePath);
+
+  const urlResultsRoot = join(temporaryDirectory, "url-results");
+  const [historyDirectoryName] = await readdir(urlResultsRoot);
+  assert.ok(historyDirectoryName);
+  const historyDirectory = join(urlResultsRoot, historyDirectoryName);
+  const urlResultsFileName = (await readdir(historyDirectory)).find((name) =>
+    name.endsWith(".jsonl"),
+  );
+  assert.ok(urlResultsFileName);
+  const urlResultsFilePath = join(historyDirectory, urlResultsFileName);
+  await rm(urlResultsFilePath);
+  await mkdir(urlResultsFilePath);
+
+  await saveSiteCheckResult(secondResult, filePath);
+
+  const savedResults = (await readFile(filePath, "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.deepEqual(savedResults, [firstResult, secondResult]);
   assert.deepEqual(
     await loadSiteCheckResults(filePath, 20, firstResult.url),
     [secondResult, firstResult],
