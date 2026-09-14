@@ -116,6 +116,46 @@ test("URLで絞り込んでから最新件数を制限する", async (context) =
   );
 });
 
+test("壊れた旧履歴があっても索引を作成して新しい結果を保存する", async (context) => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "web-health-monitor-invalid-index-history-"),
+  );
+  context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
+  const filePath = join(temporaryDirectory, "results.jsonl");
+  await writeFile(
+    filePath,
+    `invalid history\n${JSON.stringify(firstResult)}\n`,
+    "utf8",
+  );
+
+  await saveSiteCheckResult(secondResult, filePath);
+
+  assert.deepEqual(
+    await loadSiteCheckResults(filePath, 20, firstResult.url),
+    [secondResult, firstResult],
+  );
+});
+
+test("同じディレクトリ内の履歴ファイルごとに索引を分離する", async (context) => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "web-health-monitor-separated-index-"),
+  );
+  context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
+  const firstFilePath = join(temporaryDirectory, "first.jsonl");
+  const secondFilePath = join(temporaryDirectory, "second.jsonl");
+  await writeFile(firstFilePath, `${JSON.stringify(firstResult)}\n`, "utf8");
+  await writeFile(secondFilePath, `${JSON.stringify(secondResult)}\n`, "utf8");
+
+  assert.deepEqual(
+    await loadSiteCheckResults(firstFilePath, 20, firstResult.url),
+    [firstResult],
+  );
+  assert.deepEqual(
+    await loadSiteCheckResults(secondFilePath, 20, secondResult.url),
+    [secondResult],
+  );
+});
+
 test("保存ファイルがない場合は空の診断履歴を返す", async (context) => {
   const temporaryDirectory = await mkdtemp(
     join(tmpdir(), "web-health-monitor-empty-history-"),

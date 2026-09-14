@@ -65,8 +65,21 @@ function enqueueStorageOperation<T>(operation: () => Promise<T>): Promise<T> {
   return queuedOperation;
 }
 
+function tryParseSiteCheckResult(line: string): SiteCheckResult | undefined {
+  let result: unknown;
+
+  try {
+    result = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+
+  return isSiteCheckResult(result) ? result : undefined;
+}
+
 function getUrlResultsDirectory(filePath: string): string {
-  return join(dirname(filePath), urlResultsDirectoryName);
+  const fileHash = createHash("sha256").update(resolve(filePath)).digest("hex");
+  return join(dirname(filePath), urlResultsDirectoryName, fileHash);
 }
 
 function getUrlResultsFilePath(filePath: string, url: string): string {
@@ -125,7 +138,11 @@ async function readResultsByUrl(
         lineStart = index + 1;
 
         if (line !== "") {
-          addToUrlIndex(resultsByUrl, parseSiteCheckResult(line));
+          const result = tryParseSiteCheckResult(line);
+
+          if (result) {
+            addToUrlIndex(resultsByUrl, result);
+          }
         }
       }
 
@@ -135,7 +152,11 @@ async function readResultsByUrl(
     const finalLine = remainder.toString("utf8").trim();
 
     if (finalLine !== "") {
-      addToUrlIndex(resultsByUrl, parseSiteCheckResult(finalLine));
+      const result = tryParseSiteCheckResult(finalLine);
+
+      if (result) {
+        addToUrlIndex(resultsByUrl, result);
+      }
     }
 
     return resultsByUrl;
@@ -178,9 +199,9 @@ async function initializeUrlResultsIndex(filePath: string): Promise<void> {
 }
 
 function parseSiteCheckResult(line: string): SiteCheckResult {
-  const result: unknown = JSON.parse(line);
+  const result = tryParseSiteCheckResult(line);
 
-  if (!isSiteCheckResult(result)) {
+  if (!result) {
     throw new Error("保存された診断結果の形式が正しくありません。");
   }
 
