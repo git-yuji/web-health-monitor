@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -107,13 +114,6 @@ test("URLで絞り込んでから最新件数を制限する", async (context) =
     await loadSiteCheckResults(filePath, 20, firstResult.url),
     [latestTargetResult, firstResult],
   );
-
-  await writeFile(filePath, "invalid global history\n", "utf8");
-
-  assert.deepEqual(
-    await loadSiteCheckResults(filePath, 20, firstResult.url),
-    [latestTargetResult, firstResult],
-  );
 });
 
 test("壊れた旧履歴があっても索引を作成して新しい結果を保存する", async (context) => {
@@ -149,6 +149,49 @@ test("本体への追記後に中断してもURL別索引を再構築する", as
   assert.deepEqual(
     await loadSiteCheckResults(filePath, 20, firstResult.url),
     [secondResult, firstResult],
+  );
+});
+
+test("履歴本体を削除した後は古いURL別索引を引き継がない", async (context) => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "web-health-monitor-deleted-history-"),
+  );
+  context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
+  const filePath = join(temporaryDirectory, "results.jsonl");
+
+  await saveSiteCheckResult(firstResult, filePath);
+  await rm(filePath);
+  await saveSiteCheckResult(secondResult, filePath);
+
+  assert.deepEqual(
+    await loadSiteCheckResults(filePath, 20, firstResult.url),
+    [secondResult],
+  );
+});
+
+test("同じサイズの履歴本体へ差し替えてもURL別索引を再構築する", async (context) => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "web-health-monitor-rotated-history-"),
+  );
+  context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
+  const filePath = join(temporaryDirectory, "results.jsonl");
+  const rotatedFilePath = join(temporaryDirectory, "rotated.jsonl");
+  const replacementResult = {
+    ...firstResult,
+    url: "https://example.org/",
+  };
+
+  await saveSiteCheckResult(firstResult, filePath);
+  await writeFile(rotatedFilePath, `${JSON.stringify(replacementResult)}\n`, "utf8");
+  await rename(rotatedFilePath, filePath);
+
+  assert.deepEqual(
+    await loadSiteCheckResults(filePath, 20, firstResult.url),
+    [],
+  );
+  assert.deepEqual(
+    await loadSiteCheckResults(filePath, 20, replacementResult.url),
+    [replacementResult],
   );
 });
 

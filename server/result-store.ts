@@ -22,6 +22,13 @@ const urlResultsDirectoryName = "url-results";
 const urlResultsIndexMarkerName = ".initialized";
 let pendingStorageOperation: Promise<unknown> = Promise.resolve();
 
+interface ResultFileState {
+  size: string;
+  modifiedAtNanoseconds: string | null;
+  device: string | null;
+  inode: string | null;
+}
+
 export class ResultStorageError extends Error {
   override name = "ResultStorageError";
 }
@@ -99,35 +106,72 @@ function getUrlResultsIndexMarkerPath(filePath: string): string {
   return join(getUrlResultsDirectory(filePath), urlResultsIndexMarkerName);
 }
 
-async function getFileSize(filePath: string): Promise<number> {
+async function getFileState(filePath: string): Promise<ResultFileState> {
   try {
-    return (await stat(filePath)).size;
+    const fileStat = await stat(filePath, { bigint: true });
+
+    return {
+      size: fileStat.size.toString(),
+      modifiedAtNanoseconds: fileStat.mtimeNs.toString(),
+      device: fileStat.dev.toString(),
+      inode: fileStat.ino.toString(),
+    };
   } catch (error) {
     if (isFileNotFoundError(error)) {
-      return 0;
+      return {
+        size: "0",
+        modifiedAtNanoseconds: null,
+        device: null,
+        inode: null,
+      };
     }
 
     throw error;
   }
 }
 
-async function readIndexedFileSize(markerPath: string): Promise<number | undefined> {
+function isResultFileState(value: unknown): value is ResultFileState {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const state = value as Record<string, unknown>;
+
+  return (
+    typeof state.size === "string" &&
+    (state.modifiedAtNanoseconds === null ||
+      typeof state.modifiedAtNanoseconds === "string") &&
+    (state.device === null || typeof state.device === "string") &&
+    (state.inode === null || typeof state.inode === "string")
+  );
+}
+
+async function readIndexedFileState(
+  markerPath: string,
+): Promise<ResultFileState | undefined> {
   try {
-    const value = (await readFile(markerPath, "utf8")).trim();
+    const value: unknown = JSON.parse(await readFile(markerPath, "utf8"));
 
-    if (!/^\d+$/.test(value)) {
-      return undefined;
-    }
-
-    const size = Number(value);
-    return Number.isSafeInteger(size) ? size : undefined;
+    return isResultFileState(value) ? value : undefined;
   } catch (error) {
-    if (isFileNotFoundError(error)) {
+    if (isFileNotFoundError(error) || error instanceof SyntaxError) {
       return undefined;
     }
 
     throw error;
   }
+}
+
+function isSameFileState(
+  firstState: ResultFileState | undefined,
+  secondState: ResultFileState,
+): boolean {
+  return (
+    firstState?.size === secondState.size &&
+    firstState.modifiedAtNanoseconds === secondState.modifiedAtNanoseconds &&
+    firstState.device === secondState.device &&
+    firstState.inode === secondState.inode
+  );
 }
 
 function addToUrlIndex(
@@ -207,10 +251,10 @@ async function readResultsByUrl(
 async function initializeUrlResultsIndex(filePath: string): Promise<void> {
   const directoryPath = getUrlResultsDirectory(filePath);
   const markerPath = getUrlResultsIndexMarkerPath(filePath);
-  const fileSize = await getFileSize(filePath);
-  const indexedFileSize = await readIndexedFileSize(markerPath);
+  const fileState = await getFileState(filePath);
+  const indexedFileState = await readIndexedFileState(markerPath);
 
-  if (indexedFileSize === fileSize) {
+  if (isSameFileState(indexedFileState, fileState)) {
     return;
   }
 
@@ -224,6 +268,7 @@ async function initializeUrlResultsIndex(filePath: string): Promise<void> {
     }
   }
 
+  await rm(directoryPath, { recursive: true, force: true });
   await mkdir(directoryPath, { recursive: true });
 
   for (const [url, results] of resultsByUrl) {
@@ -231,7 +276,7 @@ async function initializeUrlResultsIndex(filePath: string): Promise<void> {
     await writeFile(getUrlResultsFilePath(filePath, url), content, "utf8");
   }
 
-  await writeFile(markerPath, `${fileSize}\n`, "utf8");
+  await writeFile(markerPath, `${JSON.stringify(fileState)}\n`, "utf8");
 }
 
 function parseSiteCheckResult(line: string): SiteCheckResult {
@@ -326,7 +371,7 @@ export async function saveSiteCheckResult(
       await appendFile(getUrlResultsFilePath(filePath, result.url), line, "utf8");
       await writeFile(
         getUrlResultsIndexMarkerPath(filePath),
-        `${await getFileSize(filePath)}\n`,
+        `${JSON.stringify(await getFileState(filePath))}\n`,
         "utf8",
       );
     } catch (error) {
