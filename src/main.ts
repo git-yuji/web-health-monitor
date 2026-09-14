@@ -333,7 +333,7 @@ function renderHistory(results: SiteCheckResult[]): void {
   }
 }
 
-async function refreshHistory(chartUrl?: string): Promise<void> {
+async function refreshHistory(): Promise<void> {
   let results: SiteCheckResult[];
 
   try {
@@ -348,7 +348,7 @@ async function refreshHistory(chartUrl?: string): Promise<void> {
     return;
   }
 
-  const targetUrl = chartUrl ?? results[0]?.url;
+  const targetUrl = results[0]?.url;
 
   if (targetUrl === undefined) {
     renderResponseTimeTrend([]);
@@ -387,7 +387,7 @@ urlForm.addEventListener("submit", async (event) => {
       "HTTPステータス、応答時間、SSL証明書の期限を取得し、診断結果を保存しました。稼働率は完成イメージです。",
       "text-emerald-700",
     );
-    await refreshHistory(siteCheck.url);
+    await refreshHistory();
   } catch (error) {
     const message = error instanceof Error ? error.message : "サイトの確認に失敗しました。";
     setFormMessage(message, "text-red-700");
