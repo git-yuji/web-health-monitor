@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { access, appendFile, mkdir, open, rm, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  open,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { SiteCheckResult } from "./check-site.js";
 
@@ -91,6 +99,37 @@ function getUrlResultsIndexMarkerPath(filePath: string): string {
   return join(getUrlResultsDirectory(filePath), urlResultsIndexMarkerName);
 }
 
+async function getFileSize(filePath: string): Promise<number> {
+  try {
+    return (await stat(filePath)).size;
+  } catch (error) {
+    if (isFileNotFoundError(error)) {
+      return 0;
+    }
+
+    throw error;
+  }
+}
+
+async function readIndexedFileSize(markerPath: string): Promise<number | undefined> {
+  try {
+    const value = (await readFile(markerPath, "utf8")).trim();
+
+    if (!/^\d+$/.test(value)) {
+      return undefined;
+    }
+
+    const size = Number(value);
+    return Number.isSafeInteger(size) ? size : undefined;
+  } catch (error) {
+    if (isFileNotFoundError(error)) {
+      return undefined;
+    }
+
+    throw error;
+  }
+}
+
 function addToUrlIndex(
   resultsByUrl: Map<string, SiteCheckResult[]>,
   result: SiteCheckResult,
@@ -168,14 +207,11 @@ async function readResultsByUrl(
 async function initializeUrlResultsIndex(filePath: string): Promise<void> {
   const directoryPath = getUrlResultsDirectory(filePath);
   const markerPath = getUrlResultsIndexMarkerPath(filePath);
+  const fileSize = await getFileSize(filePath);
+  const indexedFileSize = await readIndexedFileSize(markerPath);
 
-  try {
-    await access(markerPath);
+  if (indexedFileSize === fileSize) {
     return;
-  } catch (error) {
-    if (!isFileNotFoundError(error)) {
-      throw error;
-    }
   }
 
   let resultsByUrl = new Map<string, SiteCheckResult[]>();
@@ -195,7 +231,7 @@ async function initializeUrlResultsIndex(filePath: string): Promise<void> {
     await writeFile(getUrlResultsFilePath(filePath, url), content, "utf8");
   }
 
-  await writeFile(markerPath, "1\n", "utf8");
+  await writeFile(markerPath, `${fileSize}\n`, "utf8");
 }
 
 function parseSiteCheckResult(line: string): SiteCheckResult {
@@ -288,6 +324,11 @@ export async function saveSiteCheckResult(
 
     try {
       await appendFile(getUrlResultsFilePath(filePath, result.url), line, "utf8");
+      await writeFile(
+        getUrlResultsIndexMarkerPath(filePath),
+        `${await getFileSize(filePath)}\n`,
+        "utf8",
+      );
     } catch (error) {
       await rm(getUrlResultsIndexMarkerPath(filePath), { force: true });
       throw error;

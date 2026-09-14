@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -129,6 +129,22 @@ test("壊れた旧履歴があっても索引を作成して新しい結果を�
   );
 
   await saveSiteCheckResult(secondResult, filePath);
+
+  assert.deepEqual(
+    await loadSiteCheckResults(filePath, 20, firstResult.url),
+    [secondResult, firstResult],
+  );
+});
+
+test("本体への追記後に中断してもURL別索引を再構築する", async (context) => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "web-health-monitor-interrupted-index-"),
+  );
+  context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
+  const filePath = join(temporaryDirectory, "results.jsonl");
+
+  await saveSiteCheckResult(firstResult, filePath);
+  await appendFile(filePath, `${JSON.stringify(secondResult)}\n`, "utf8");
 
   assert.deepEqual(
     await loadSiteCheckResults(filePath, 20, firstResult.url),
