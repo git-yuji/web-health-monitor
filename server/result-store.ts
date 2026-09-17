@@ -33,6 +33,10 @@ export class ResultStorageError extends Error {
   override name = "ResultStorageError";
 }
 
+class InvalidStoredResultError extends Error {
+  override name = "InvalidStoredResultError";
+}
+
 function isSslCertificateInfo(value: unknown): boolean {
   if (typeof value !== "object" || value === null) {
     return false;
@@ -291,7 +295,9 @@ function parseSiteCheckResult(line: string): SiteCheckResult {
   const result = tryParseSiteCheckResult(line);
 
   if (!result) {
-    throw new Error("保存された診断結果の形式が正しくありません。");
+    throw new InvalidStoredResultError(
+      "保存された診断結果の形式が正しくありません。",
+    );
   }
 
   return result;
@@ -369,24 +375,22 @@ async function rebuildUrlResultsFile(
   filePath: string,
   url: string,
 ): Promise<SiteCheckResult[]> {
-  let resultsByUrl: Map<string, SiteCheckResult[]>;
+  let resultsByUrl = new Map<string, SiteCheckResult[]>();
 
   try {
     resultsByUrl = await readResultsByUrl(filePath);
   } catch (error) {
-    if (isFileNotFoundError(error)) {
-      return [];
+    if (!isFileNotFoundError(error)) {
+      throw error;
     }
-
-    throw error;
   }
 
   const results = resultsByUrl.get(url) ?? [];
-
-  if (results.length > 0) {
-    const content = `${results.map((item) => JSON.stringify(item)).join("\n")}\n`;
-    await writeFile(getUrlResultsFilePath(filePath, url), content, "utf8");
-  }
+  const content =
+    results.length === 0
+      ? ""
+      : `${results.map((item) => JSON.stringify(item)).join("\n")}\n`;
+  await writeFile(getUrlResultsFilePath(filePath, url), content, "utf8");
 
   return results;
 }
@@ -404,7 +408,10 @@ async function updateUrlResultsIndex(
       urlHistoryLimit - 1,
     );
   } catch (error) {
-    if (isFileNotFoundError(error)) {
+    if (
+      isFileNotFoundError(error) ||
+      error instanceof InvalidStoredResultError
+    ) {
       await rebuildUrlResultsFile(filePath, result.url);
       return;
     }
@@ -479,7 +486,10 @@ export async function loadSiteCheckResults(
           limit,
         );
       } catch (error) {
-        if (isFileNotFoundError(error)) {
+        if (
+          isFileNotFoundError(error) ||
+          error instanceof InvalidStoredResultError
+        ) {
           const rebuiltResults = await rebuildUrlResultsFile(filePath, targetUrl);
           return rebuiltResults.slice(-limit).reverse();
         }
