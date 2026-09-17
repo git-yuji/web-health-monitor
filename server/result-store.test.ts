@@ -188,6 +188,29 @@ test("URL別索引の更新に失敗しても本体への保存を成功扱い�
   );
 });
 
+test("URL別索引の初期化に失敗しても本体への保存を成功扱いにする", async (context) => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "web-health-monitor-index-init-error-"),
+  );
+  context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
+  const filePath = join(temporaryDirectory, "results.jsonl");
+  const blockingPath = join(temporaryDirectory, "url-results");
+  await writeFile(blockingPath, "not a directory", "utf8");
+
+  await saveSiteCheckResult(firstResult, filePath);
+
+  assert.deepEqual(
+    JSON.parse((await readFile(filePath, "utf8")).trim()),
+    firstResult,
+  );
+
+  await rm(blockingPath);
+  assert.deepEqual(
+    await loadSiteCheckResults(filePath, 20, firstResult.url),
+    [firstResult],
+  );
+});
+
 test("履歴本体を削除した後は古いURL別索引を引き継がない", async (context) => {
   const temporaryDirectory = await mkdtemp(
     join(tmpdir(), "web-health-monitor-deleted-history-"),

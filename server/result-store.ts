@@ -370,10 +370,22 @@ export async function saveSiteCheckResult(
   filePath = defaultResultsFilePath,
 ): Promise<void> {
   const save = enqueueStorageOperation(async () => {
-    await initializeUrlResultsIndex(filePath);
     await mkdir(dirname(filePath), { recursive: true });
+    let urlResultsIndexReady = true;
+
+    try {
+      await initializeUrlResultsIndex(filePath);
+    } catch {
+      urlResultsIndexReady = false;
+    }
+
     const line = `${JSON.stringify(result)}\n`;
     await appendFile(filePath, line, "utf8");
+
+    if (!urlResultsIndexReady) {
+      await invalidateUrlResultsIndex(filePath);
+      return;
+    }
 
     try {
       await appendFile(getUrlResultsFilePath(filePath, result.url), line, "utf8");
