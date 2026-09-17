@@ -248,6 +248,39 @@ test("URL別索引を最新20件に制限する", async (context) => {
   );
 });
 
+test("欠落したURL別索引を読み込み時と保存時に再構築する", async (context) => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "web-health-monitor-missing-url-index-"),
+  );
+  context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
+  const filePath = join(temporaryDirectory, "results.jsonl");
+
+  await saveSiteCheckResult(firstResult, filePath);
+
+  const urlResultsRoot = join(temporaryDirectory, "url-results");
+  const [historyDirectoryName] = await readdir(urlResultsRoot);
+  assert.ok(historyDirectoryName);
+  const historyDirectory = join(urlResultsRoot, historyDirectoryName);
+  const urlResultsFileName = (await readdir(historyDirectory)).find((name) =>
+    name.endsWith(".jsonl"),
+  );
+  assert.ok(urlResultsFileName);
+  const urlResultsFilePath = join(historyDirectory, urlResultsFileName);
+
+  await rm(urlResultsFilePath);
+  assert.deepEqual(
+    await loadSiteCheckResults(filePath, 20, firstResult.url),
+    [firstResult],
+  );
+
+  await rm(urlResultsFilePath);
+  await saveSiteCheckResult(secondResult, filePath);
+  assert.deepEqual(
+    await loadSiteCheckResults(filePath, 20, firstResult.url),
+    [secondResult, firstResult],
+  );
+});
+
 test("履歴本体を削除した後は古いURL別索引を引き継がない", async (context) => {
   const temporaryDirectory = await mkdtemp(
     join(tmpdir(), "web-health-monitor-deleted-history-"),

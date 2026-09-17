@@ -365,6 +365,32 @@ async function readLatestResults(
   }
 }
 
+async function rebuildUrlResultsFile(
+  filePath: string,
+  url: string,
+): Promise<SiteCheckResult[]> {
+  let resultsByUrl: Map<string, SiteCheckResult[]>;
+
+  try {
+    resultsByUrl = await readResultsByUrl(filePath);
+  } catch (error) {
+    if (isFileNotFoundError(error)) {
+      return [];
+    }
+
+    throw error;
+  }
+
+  const results = resultsByUrl.get(url) ?? [];
+
+  if (results.length > 0) {
+    const content = `${results.map((item) => JSON.stringify(item)).join("\n")}\n`;
+    await writeFile(getUrlResultsFilePath(filePath, url), content, "utf8");
+  }
+
+  return results;
+}
+
 async function updateUrlResultsIndex(
   filePath: string,
   result: SiteCheckResult,
@@ -378,9 +404,12 @@ async function updateUrlResultsIndex(
       urlHistoryLimit - 1,
     );
   } catch (error) {
-    if (!isFileNotFoundError(error)) {
-      throw error;
+    if (isFileNotFoundError(error)) {
+      await rebuildUrlResultsFile(filePath, result.url);
+      return;
     }
+
+    throw error;
   }
 
   const results = [...previousResults.reverse(), result];
@@ -451,7 +480,8 @@ export async function loadSiteCheckResults(
         );
       } catch (error) {
         if (isFileNotFoundError(error)) {
-          return [];
+          const rebuiltResults = await rebuildUrlResultsFile(filePath, targetUrl);
+          return rebuiltResults.slice(-limit).reverse();
         }
 
         throw error;
