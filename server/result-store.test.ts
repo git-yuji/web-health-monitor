@@ -211,6 +211,43 @@ test("URL別索引の初期化に失敗しても本体への保存を成功扱�
   );
 });
 
+test("URL別索引を最新20件に制限する", async (context) => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "web-health-monitor-limited-index-"),
+  );
+  context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
+  const filePath = join(temporaryDirectory, "results.jsonl");
+  const results = Array.from({ length: 25 }, (_, index) => ({
+    ...firstResult,
+    responseTimeMs: index,
+    checkedAt: new Date(Date.UTC(2026, 8, 11, 0, index)).toISOString(),
+  }));
+
+  for (const result of results) {
+    await saveSiteCheckResult(result, filePath);
+  }
+
+  const urlResultsRoot = join(temporaryDirectory, "url-results");
+  const [historyDirectoryName] = await readdir(urlResultsRoot);
+  assert.ok(historyDirectoryName);
+  const historyDirectory = join(urlResultsRoot, historyDirectoryName);
+  const urlResultsFileName = (await readdir(historyDirectory)).find((name) =>
+    name.endsWith(".jsonl"),
+  );
+  assert.ok(urlResultsFileName);
+  const indexedResults = (
+    await readFile(join(historyDirectory, urlResultsFileName), "utf8")
+  )
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.deepEqual(indexedResults, results.slice(-20));
+  assert.deepEqual(
+    await loadSiteCheckResults(filePath, 20, firstResult.url),
+    results.slice(-20).reverse(),
+  );
+});
+
 test("履歴本体を削除した後は古いURL別索引を引き継がない", async (context) => {
   const temporaryDirectory = await mkdtemp(
     join(tmpdir(), "web-health-monitor-deleted-history-"),

@@ -365,6 +365,29 @@ async function readLatestResults(
   }
 }
 
+async function updateUrlResultsIndex(
+  filePath: string,
+  result: SiteCheckResult,
+): Promise<void> {
+  const urlResultsFilePath = getUrlResultsFilePath(filePath, result.url);
+  let previousResults: SiteCheckResult[] = [];
+
+  try {
+    previousResults = await readLatestResults(
+      urlResultsFilePath,
+      urlHistoryLimit - 1,
+    );
+  } catch (error) {
+    if (!isFileNotFoundError(error)) {
+      throw error;
+    }
+  }
+
+  const results = [...previousResults.reverse(), result];
+  const content = `${results.map((item) => JSON.stringify(item)).join("\n")}\n`;
+  await writeFile(urlResultsFilePath, content, "utf8");
+}
+
 export async function saveSiteCheckResult(
   result: SiteCheckResult,
   filePath = defaultResultsFilePath,
@@ -388,7 +411,7 @@ export async function saveSiteCheckResult(
     }
 
     try {
-      await appendFile(getUrlResultsFilePath(filePath, result.url), line, "utf8");
+      await updateUrlResultsIndex(filePath, result);
       await writeFile(
         getUrlResultsIndexMarkerPath(filePath),
         `${JSON.stringify(await getFileState(filePath))}\n`,
