@@ -12,6 +12,16 @@ export type SiteCheckResult = {
   checkedAt: string;
 };
 
+export type MonitorTarget = {
+  url: string;
+  registeredAt: string;
+};
+
+export type MonitorTargetRegistration = {
+  target: MonitorTarget;
+  created: boolean;
+};
+
 function isSslCertificateInfo(value: unknown): boolean {
   if (typeof value !== "object" || value === null) {
     return false;
@@ -51,6 +61,15 @@ function getApiErrorMessage(value: unknown): string | undefined {
   }
 
   return typeof value.message === "string" ? value.message : undefined;
+}
+
+function isMonitorTarget(value: unknown): value is MonitorTarget {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const target = value as Partial<MonitorTarget>;
+  return typeof target.url === "string" && typeof target.registeredAt === "string";
 }
 
 export async function requestSiteCheck(url: string): Promise<SiteCheckResult> {
@@ -108,4 +127,68 @@ export async function requestSiteCheckHistory(url?: string): Promise<SiteCheckRe
   }
 
   return responseBody.results;
+}
+
+export async function requestMonitorTargets(): Promise<MonitorTarget[]> {
+  const response = await fetch("/api/targets");
+  let responseBody: unknown;
+
+  try {
+    responseBody = await response.json();
+  } catch {
+    throw new Error("監視対象APIから読み取れないレスポンスを受信しました。");
+  }
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(responseBody) ?? "監視対象を取得できませんでした。");
+  }
+
+  if (
+    typeof responseBody !== "object" ||
+    responseBody === null ||
+    !("targets" in responseBody) ||
+    !Array.isArray(responseBody.targets) ||
+    !responseBody.targets.every(isMonitorTarget)
+  ) {
+    throw new Error("監視対象APIから不正なレスポンスを受信しました。");
+  }
+
+  return responseBody.targets;
+}
+
+export async function registerMonitorTarget(
+  url: string,
+): Promise<MonitorTargetRegistration> {
+  const response = await fetch("/api/targets", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  let responseBody: unknown;
+
+  try {
+    responseBody = await response.json();
+  } catch {
+    throw new Error("監視対象APIから読み取れないレスポンスを受信しました。");
+  }
+
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(responseBody) ?? "監視対象を登録できませんでした。");
+  }
+
+  if (
+    typeof responseBody !== "object" ||
+    responseBody === null ||
+    !("target" in responseBody) ||
+    !isMonitorTarget(responseBody.target) ||
+    !("created" in responseBody) ||
+    typeof responseBody.created !== "boolean"
+  ) {
+    throw new Error("監視対象APIから不正なレスポンスを受信しました。");
+  }
+
+  return {
+    target: responseBody.target,
+    created: responseBody.created,
+  };
 }
