@@ -24,5 +24,6 @@ export function validateTargetUrl(value: string): UrlValidationResult {
     };
   }
 
+  url.hash = "";
   return { valid: true, url };
 }
