@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   appendFile,
   mkdir,
@@ -136,6 +137,23 @@ test("フラグメント付きの旧履歴を正規化したURLへ統合する",
 
   await saveSiteCheckResult(legacyResult, filePath);
   await saveSiteCheckResult(latestResult, filePath);
+
+  const urlResultsRoot = join(temporaryDirectory, "url-results");
+  const [historyDirectoryName] = await readdir(urlResultsRoot);
+  assert.ok(historyDirectoryName);
+  const historyDirectory = join(urlResultsRoot, historyDirectoryName);
+  const normalizedIndexPath = join(
+    historyDirectory,
+    `${createHash("sha256").update(normalizedUrl).digest("hex")}.jsonl`,
+  );
+  await writeFile(normalizedIndexPath, `${JSON.stringify(latestResult)}\n`, "utf8");
+
+  const markerPath = join(historyDirectory, ".initialized");
+  const legacyMarker = JSON.parse(
+    await readFile(markerPath, "utf8"),
+  ) as Record<string, unknown>;
+  delete legacyMarker.indexVersion;
+  await writeFile(markerPath, `${JSON.stringify(legacyMarker)}\n`, "utf8");
 
   assert.deepEqual(
     await loadSiteCheckResults(filePath, 20, normalizedUrl),

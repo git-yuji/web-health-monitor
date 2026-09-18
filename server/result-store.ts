@@ -21,9 +21,11 @@ const readChunkBytes = 64 * 1024;
 const urlHistoryLimit = 20;
 const urlResultsDirectoryName = "url-results";
 const urlResultsIndexMarkerName = ".initialized";
+const urlResultsIndexVersion = 2;
 let pendingStorageOperation: Promise<unknown> = Promise.resolve();
 
 interface ResultFileState {
+  indexVersion: number;
   size: string;
   modifiedAtNanoseconds: string | null;
   device: string | null;
@@ -133,6 +135,7 @@ async function getFileState(filePath: string): Promise<ResultFileState> {
     const fileStat = await stat(filePath, { bigint: true });
 
     return {
+      indexVersion: urlResultsIndexVersion,
       size: fileStat.size.toString(),
       modifiedAtNanoseconds: fileStat.mtimeNs.toString(),
       device: fileStat.dev.toString(),
@@ -141,6 +144,7 @@ async function getFileState(filePath: string): Promise<ResultFileState> {
   } catch (error) {
     if (isFileNotFoundError(error)) {
       return {
+        indexVersion: urlResultsIndexVersion,
         size: "0",
         modifiedAtNanoseconds: null,
         device: null,
@@ -160,6 +164,7 @@ function isResultFileState(value: unknown): value is ResultFileState {
   const state = value as Record<string, unknown>;
 
   return (
+    state.indexVersion === urlResultsIndexVersion &&
     typeof state.size === "string" &&
     (state.modifiedAtNanoseconds === null ||
       typeof state.modifiedAtNanoseconds === "string") &&
@@ -189,6 +194,7 @@ function isSameFileState(
   secondState: ResultFileState,
 ): boolean {
   return (
+    firstState?.indexVersion === secondState.indexVersion &&
     firstState?.size === secondState.size &&
     firstState.modifiedAtNanoseconds === secondState.modifiedAtNanoseconds &&
     firstState.device === secondState.device &&
