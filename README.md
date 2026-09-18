@@ -51,6 +51,9 @@ npm run dev
 保存された最新20件は、画面の診断履歴に新しい順で表示されます。
 最新の診断URLについては、保存された応答時間の推移もグラフで確認できます。
 
+監視対象は`POST /api/targets`へ`{"url":"https://example.com/"}`を送ると登録でき、
+`GET /api/targets`で登録順に取得できます。
+
 ## ビルド
 
 ```bash
