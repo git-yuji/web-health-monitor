@@ -30,3 +30,18 @@ test("HTTPリクエストに送信されないフラグメントを除外する"
   assert.equal(firstResult.url.href, "https://example.com/path");
   assert.equal(secondResult.url.href, firstResult.url.href);
 });
+
+test("空のクエリ区切りを除外して値のあるクエリを保持する", () => {
+  const emptyQueryResult = validateTargetUrl("https://example.com/path?");
+  const queryResult = validateTargetUrl("https://example.com/path?key=value");
+
+  assert.equal(emptyQueryResult.valid, true);
+  assert.equal(queryResult.valid, true);
+
+  if (!emptyQueryResult.valid || !queryResult.valid) {
+    return;
+  }
+
+  assert.equal(emptyQueryResult.url.href, "https://example.com/path");
+  assert.equal(queryResult.url.href, "https://example.com/path?key=value");
+});

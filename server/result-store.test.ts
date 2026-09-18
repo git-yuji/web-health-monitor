@@ -118,6 +118,31 @@ test("URLで絞り込んでから最新件数を制限する", async (context) =
   );
 });
 
+test("フラグメント付きの旧履歴を正規化したURLへ統合する", async (context) => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "web-health-monitor-normalized-history-"),
+  );
+  context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
+  const filePath = join(temporaryDirectory, "results.jsonl");
+  const normalizedUrl = "https://example.com/path";
+  const legacyResult = {
+    ...firstResult,
+    url: `${normalizedUrl}#section`,
+  };
+  const latestResult = {
+    ...secondResult,
+    url: normalizedUrl,
+  };
+
+  await saveSiteCheckResult(legacyResult, filePath);
+  await saveSiteCheckResult(latestResult, filePath);
+
+  assert.deepEqual(
+    await loadSiteCheckResults(filePath, 20, normalizedUrl),
+    [latestResult, { ...legacyResult, url: normalizedUrl }],
+  );
+});
+
 test("壊れた旧履歴があっても索引を作成して新しい結果を保存する", async (context) => {
   const temporaryDirectory = await mkdtemp(
     join(tmpdir(), "web-health-monitor-invalid-index-history-"),

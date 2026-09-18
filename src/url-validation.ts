@@ -2,6 +2,17 @@ export type UrlValidationResult =
   | { valid: true; url: URL }
   | { valid: false; message: string };
 
+export function normalizeTargetUrl(url: URL): URL {
+  const normalizedUrl = new URL(url);
+  normalizedUrl.hash = "";
+
+  if (normalizedUrl.search === "") {
+    normalizedUrl.search = "";
+  }
+
+  return normalizedUrl;
+}
+
 export function validateTargetUrl(value: string): UrlValidationResult {
   const trimmedValue = value.trim();
 
@@ -24,6 +35,5 @@ export function validateTargetUrl(value: string): UrlValidationResult {
     };
   }
 
-  url.hash = "";
-  return { valid: true, url };
+  return { valid: true, url: normalizeTargetUrl(url) };
 }

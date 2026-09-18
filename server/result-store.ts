@@ -9,6 +9,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { normalizeTargetUrl } from "../src/url-validation.js";
 import type { SiteCheckResult } from "./check-site.js";
 
 const defaultResultsFilePath = resolve(
@@ -93,7 +94,16 @@ function tryParseSiteCheckResult(line: string): SiteCheckResult | undefined {
     return undefined;
   }
 
-  return isSiteCheckResult(result) ? result : undefined;
+  if (!isSiteCheckResult(result)) {
+    return undefined;
+  }
+
+  try {
+    const normalizedUrl = normalizeTargetUrl(new URL(result.url)).href;
+    return normalizedUrl === result.url ? result : { ...result, url: normalizedUrl };
+  } catch {
+    return result;
+  }
 }
 
 function getUrlResultsDirectory(filePath: string): string {
