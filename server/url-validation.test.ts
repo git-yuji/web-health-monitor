@@ -15,3 +15,33 @@ test("空欄とURLではない文字列を拒否する", () => {
 test("HTTPとHTTPS以外のURLを拒否する", () => {
   assert.equal(validateTargetUrl("ftp://example.com").valid, false);
 });
+
+test("HTTPリクエストに送信されないフラグメントを除外する", () => {
+  const firstResult = validateTargetUrl("https://example.com/path#one");
+  const secondResult = validateTargetUrl("https://example.com/path#two");
+
+  assert.equal(firstResult.valid, true);
+  assert.equal(secondResult.valid, true);
+
+  if (!firstResult.valid || !secondResult.valid) {
+    return;
+  }
+
+  assert.equal(firstResult.url.href, "https://example.com/path");
+  assert.equal(secondResult.url.href, firstResult.url.href);
+});
+
+test("空のクエリ区切りを除外して値のあるクエリを保持する", () => {
+  const emptyQueryResult = validateTargetUrl("https://example.com/path?");
+  const queryResult = validateTargetUrl("https://example.com/path?key=value");
+
+  assert.equal(emptyQueryResult.valid, true);
+  assert.equal(queryResult.valid, true);
+
+  if (!emptyQueryResult.valid || !queryResult.valid) {
+    return;
+  }
+
+  assert.equal(emptyQueryResult.url.href, "https://example.com/path");
+  assert.equal(queryResult.url.href, "https://example.com/path?key=value");
+});

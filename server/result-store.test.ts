@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   appendFile,
   mkdir,
@@ -115,6 +116,48 @@ test("URLで絞り込んでから最新件数を制限する", async (context) =
   assert.deepEqual(
     await loadSiteCheckResults(filePath, 20, firstResult.url),
     [latestTargetResult, firstResult],
+  );
+});
+
+test("フラグメント付きの旧履歴を正規化したURLへ統合する", async (context) => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "web-health-monitor-normalized-history-"),
+  );
+  context.after(() => rm(temporaryDirectory, { recursive: true, force: true }));
+  const filePath = join(temporaryDirectory, "results.jsonl");
+  const normalizedUrl = "https://example.com/path";
+  const legacyResult = {
+    ...firstResult,
+    url: `${normalizedUrl}#section`,
+  };
+  const latestResult = {
+    ...secondResult,
+    url: normalizedUrl,
+  };
+
+  await saveSiteCheckResult(legacyResult, filePath);
+  await saveSiteCheckResult(latestResult, filePath);
+
+  const urlResultsRoot = join(temporaryDirectory, "url-results");
+  const [historyDirectoryName] = await readdir(urlResultsRoot);
+  assert.ok(historyDirectoryName);
+  const historyDirectory = join(urlResultsRoot, historyDirectoryName);
+  const normalizedIndexPath = join(
+    historyDirectory,
+    `${createHash("sha256").update(normalizedUrl).digest("hex")}.jsonl`,
+  );
+  await writeFile(normalizedIndexPath, `${JSON.stringify(latestResult)}\n`, "utf8");
+
+  const markerPath = join(historyDirectory, ".initialized");
+  const legacyMarker = JSON.parse(
+    await readFile(markerPath, "utf8"),
+  ) as Record<string, unknown>;
+  delete legacyMarker.indexVersion;
+  await writeFile(markerPath, `${JSON.stringify(legacyMarker)}\n`, "utf8");
+
+  assert.deepEqual(
+    await loadSiteCheckResults(filePath, 20, normalizedUrl),
+    [latestResult, { ...legacyResult, url: normalizedUrl }],
   );
 });
 

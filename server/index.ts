@@ -1,5 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { checkSite, SiteCheckTimeoutError } from "./check-site.js";
+import {
+  loadMonitorTargets,
+  registerMonitorTarget,
+} from "./monitor-target-store.js";
 import { UnsafeTargetError } from "./network-policy.js";
 import {
   loadSiteCheckResults,
@@ -158,6 +162,43 @@ async function handleResultsByUrlRequest(
   }
 }
 
+async function handleTargetsRequest(response: ServerResponse): Promise<void> {
+  try {
+    const targets = await loadMonitorTargets();
+    sendJson(response, 200, { targets });
+  } catch (error) {
+    sendJson(response, 500, { message: getErrorMessage(error) } satisfies ErrorResponse);
+  }
+}
+
+async function handleTargetRegistrationRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<void> {
+  let body: unknown;
+
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    sendJson(response, 400, { message: getErrorMessage(error) } satisfies ErrorResponse);
+    return;
+  }
+
+  const targetUrl = getTargetUrl(body);
+
+  if (!targetUrl.valid) {
+    sendJson(response, 400, { message: targetUrl.message } satisfies ErrorResponse);
+    return;
+  }
+
+  try {
+    const registration = await registerMonitorTarget(targetUrl.url.href);
+    sendJson(response, registration.created ? 201 : 200, registration);
+  } catch (error) {
+    sendJson(response, 500, { message: getErrorMessage(error) } satisfies ErrorResponse);
+  }
+}
+
 const server = createServer((request, response) => {
   const requestUrl = new URL(request.url ?? "/", "http://localhost");
 
@@ -173,6 +214,16 @@ const server = createServer((request, response) => {
 
   if (request.method === "POST" && requestUrl.pathname === "/api/results") {
     void handleResultsByUrlRequest(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/targets") {
+    void handleTargetsRequest(response);
+    return;
+  }
+
+  if (request.method === "POST" && requestUrl.pathname === "/api/targets") {
+    void handleTargetRegistrationRequest(request, response);
     return;
   }
 
