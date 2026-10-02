@@ -1,7 +1,10 @@
 import "./style.css";
 import {
+  registerMonitorTarget,
+  requestMonitorTargets,
   requestSiteCheck,
   requestSiteCheckHistory,
+  type MonitorTarget,
   type SiteCheckResult,
 } from "./site-check-api";
 import { createResponseTimeChart } from "./response-time-chart";
@@ -56,9 +59,14 @@ app.innerHTML = `
                 </svg>
                 <input id="target-url" type="url" placeholder="https://example.com" autocomplete="url" inputmode="url" aria-describedby="url-form-message" class="min-w-0 flex-1 bg-transparent py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400" />
               </div>
-              <button id="url-check-submit" type="submit" class="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60">
-                サイトを確認
-              </button>
+              <div class="grid shrink-0 grid-cols-2 gap-2 sm:flex">
+                <button id="url-check-submit" type="submit" class="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60">
+                  サイトを確認
+                </button>
+                <button id="target-register-button" type="button" class="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:border-emerald-500 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60">
+                  監視に追加
+                </button>
+              </div>
             </div>
           </form>
           <p id="url-form-message" class="mt-3 text-xs text-slate-600" aria-live="polite">URLを入力するとHTTPステータス、応答時間、SSL証明書の期限を確認できます。稼働率は完成イメージです。</p>
@@ -117,6 +125,17 @@ app.innerHTML = `
           </div>
         </div>
       </div>
+      </section>
+
+      <section class="border-b border-slate-200/80 bg-white">
+        <div class="mx-auto w-full max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
+          <div class="mb-8">
+            <p class="text-xs font-bold tracking-[0.16em] text-emerald-700">MONITOR TARGETS</p>
+            <h2 class="mt-3 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">監視対象</h2>
+            <p id="target-list-message" class="mt-3 text-sm text-slate-600" aria-live="polite">監視対象を読み込んでいます。</p>
+          </div>
+          <div id="target-list" class="grid gap-3"></div>
+        </div>
       </section>
 
       <section class="border-b border-slate-200/80 bg-slate-50">
@@ -184,6 +203,10 @@ const urlForm = getRequiredElement<HTMLFormElement>(app, "#url-check-form");
 const urlInput = getRequiredElement<HTMLInputElement>(app, "#target-url");
 const urlFormMessage = getRequiredElement<HTMLElement>(app, "#url-form-message");
 const submitButton = getRequiredElement<HTMLButtonElement>(app, "#url-check-submit");
+const targetRegisterButton = getRequiredElement<HTMLButtonElement>(
+  app,
+  "#target-register-button",
+);
 const monitoredSite = getRequiredElement<HTMLElement>(app, "#monitored-site");
 const siteStatus = getRequiredElement<HTMLElement>(app, "#site-status");
 const siteStatusDot = getRequiredElement<HTMLElement>(app, "#site-status-dot");
@@ -200,6 +223,8 @@ const responseChartRange = getRequiredElement<HTMLElement>(app, "#response-chart
 const responseChartArea = getRequiredElement<SVGPathElement>(app, "#response-chart-area");
 const responseChartLine = getRequiredElement<SVGPathElement>(app, "#response-chart-line");
 const responseChartPoints = getRequiredElement<SVGGElement>(app, "#response-chart-points");
+const targetListMessage = getRequiredElement<HTMLElement>(app, "#target-list-message");
+const targetList = getRequiredElement<HTMLElement>(app, "#target-list");
 
 const defaultMessage = "URLを入力するとHTTPステータス、応答時間、SSL証明書の期限を確認できます。稼働率は完成イメージです。";
 type MessageColorClass = "text-slate-600" | "text-red-700" | "text-emerald-700";
@@ -213,7 +238,23 @@ function setFormMessage(message: string, colorClass: MessageColorClass): void {
 function setLoading(isLoading: boolean): void {
   urlInput.disabled = isLoading;
   submitButton.disabled = isLoading;
+  targetRegisterButton.disabled = isLoading;
   submitButton.textContent = isLoading ? "確認中..." : "サイトを確認";
+  targetRegisterButton.textContent = isLoading ? "処理中..." : "監視に追加";
+}
+
+function getValidatedTargetUrl(): URL | undefined {
+  const result = validateTargetUrl(urlInput.value);
+
+  if (!result.valid) {
+    urlInput.setAttribute("aria-invalid", "true");
+    setFormMessage(result.message, "text-red-700");
+    urlInput.focus();
+    return undefined;
+  }
+
+  urlInput.removeAttribute("aria-invalid");
+  return result.url;
 }
 
 function isHealthySiteCheck(result: SiteCheckResult): boolean {
@@ -333,6 +374,51 @@ function renderHistory(results: SiteCheckResult[]): void {
   }
 }
 
+function renderMonitorTargets(targets: MonitorTarget[]): void {
+  targetList.replaceChildren();
+
+  if (targets.length === 0) {
+    targetListMessage.textContent = "登録された監視対象はまだありません。";
+    targetListMessage.classList.remove("text-red-700");
+    targetListMessage.classList.add("text-slate-600");
+    return;
+  }
+
+  targetListMessage.textContent = `${targets.length}件の監視対象を登録しています。`;
+  targetListMessage.classList.remove("text-red-700");
+  targetListMessage.classList.add("text-slate-600");
+
+  for (const target of targets) {
+    const item = document.createElement("article");
+    item.className =
+      "flex flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-5 sm:flex-row sm:items-center sm:justify-between";
+    const url = document.createElement("p");
+    url.className = "break-all font-semibold text-slate-950";
+    url.textContent = target.url;
+    const registeredAt = document.createElement("time");
+    registeredAt.className = "text-xs text-slate-500";
+    registeredAt.dateTime = target.registeredAt;
+    registeredAt.textContent = `${new Intl.DateTimeFormat("ja-JP", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(target.registeredAt))} 登録`;
+    item.append(url, registeredAt);
+    targetList.append(item);
+  }
+}
+
+async function refreshMonitorTargets(): Promise<void> {
+  try {
+    renderMonitorTargets(await requestMonitorTargets());
+  } catch (error) {
+    targetList.replaceChildren();
+    targetListMessage.textContent =
+      error instanceof Error ? error.message : "監視対象を取得できませんでした。";
+    targetListMessage.classList.remove("text-slate-600");
+    targetListMessage.classList.add("text-red-700");
+  }
+}
+
 async function refreshHistory(): Promise<void> {
   let results: SiteCheckResult[];
 
@@ -367,21 +453,17 @@ async function refreshHistory(): Promise<void> {
 urlForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const result = validateTargetUrl(urlInput.value);
+  const targetUrl = getValidatedTargetUrl();
 
-  if (!result.valid) {
-    urlInput.setAttribute("aria-invalid", "true");
-    setFormMessage(result.message, "text-red-700");
-    urlInput.focus();
+  if (!targetUrl) {
     return;
   }
 
-  urlInput.removeAttribute("aria-invalid");
   setLoading(true);
   setFormMessage("サイトを確認しています。", "text-slate-600");
 
   try {
-    const siteCheck = await requestSiteCheck(result.url.href);
+    const siteCheck = await requestSiteCheck(targetUrl.href);
     renderSiteCheck(siteCheck);
     setFormMessage(
       "HTTPステータス、応答時間、SSL証明書の期限を取得し、診断結果を保存しました。稼働率は完成イメージです。",
@@ -396,9 +478,36 @@ urlForm.addEventListener("submit", async (event) => {
   }
 });
 
+targetRegisterButton.addEventListener("click", async () => {
+  const targetUrl = getValidatedTargetUrl();
+
+  if (!targetUrl) {
+    return;
+  }
+
+  setLoading(true);
+  setFormMessage("監視対象へ登録しています。", "text-slate-600");
+
+  try {
+    const registration = await registerMonitorTarget(targetUrl.href);
+    setFormMessage(
+      registration.created
+        ? "監視対象へ登録しました。"
+        : "このURLはすでに監視対象へ登録されています。",
+      "text-emerald-700",
+    );
+    await refreshMonitorTargets();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "監視対象を登録できませんでした。";
+    setFormMessage(message, "text-red-700");
+  } finally {
+    setLoading(false);
+  }
+});
+
 urlInput.addEventListener("input", () => {
   urlInput.removeAttribute("aria-invalid");
   setFormMessage(defaultMessage, "text-slate-600");
 });
 
-void refreshHistory();
+void Promise.all([refreshHistory(), refreshMonitorTargets()]);
