@@ -2,9 +2,11 @@ import "./style.css";
 import {
   registerMonitorTarget,
   requestMonitorTargets,
+  requestMonitorEvents,
   requestSiteCheck,
   requestSiteCheckHistory,
   type MonitorTarget,
+  type MonitorEvent,
   type SiteCheckResult,
 } from "./site-check-api";
 import { createResponseTimeChart } from "./response-time-chart";
@@ -138,6 +140,21 @@ app.innerHTML = `
         </div>
       </section>
 
+      <section class="border-b border-slate-200/80 bg-white">
+        <div class="mx-auto w-full max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
+          <div class="mb-8 flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p class="text-xs font-bold tracking-[0.16em] text-emerald-700">MONITOR EVENTS</p>
+              <h2 class="mt-3 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">定期監視の履歴</h2>
+              <p class="mt-3 text-sm text-slate-600">正常・異常・通信失敗の最新20件。30秒ごとに自動更新します。</p>
+              <p id="monitor-event-message" class="mt-2 text-sm text-slate-600" aria-live="polite">監視イベントを読み込んでいます。</p>
+            </div>
+            <button id="monitor-event-refresh" type="button" class="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:border-emerald-500 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60">履歴を更新</button>
+          </div>
+          <div id="monitor-event-list" class="grid gap-3"></div>
+        </div>
+      </section>
+
       <section class="border-b border-slate-200/80 bg-slate-50">
         <div class="mx-auto w-full max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
           <div class="mb-8">
@@ -225,6 +242,9 @@ const responseChartLine = getRequiredElement<SVGPathElement>(app, "#response-cha
 const responseChartPoints = getRequiredElement<SVGGElement>(app, "#response-chart-points");
 const targetListMessage = getRequiredElement<HTMLElement>(app, "#target-list-message");
 const targetList = getRequiredElement<HTMLElement>(app, "#target-list");
+const monitorEventMessage = getRequiredElement<HTMLElement>(app, "#monitor-event-message");
+const monitorEventList = getRequiredElement<HTMLElement>(app, "#monitor-event-list");
+const monitorEventRefresh = getRequiredElement<HTMLButtonElement>(app, "#monitor-event-refresh");
 
 const defaultMessage = "URLを入力するとHTTPステータス、応答時間、SSL証明書の期限を確認できます。稼働率は完成イメージです。";
 type MessageColorClass = "text-slate-600" | "text-red-700" | "text-emerald-700";
@@ -419,6 +439,74 @@ async function refreshMonitorTargets(): Promise<void> {
   }
 }
 
+function renderMonitorEvents(events: MonitorEvent[]): void {
+  monitorEventList.replaceChildren();
+  for (const event of events) {
+    const item = document.createElement("article");
+    item.className = "flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-5 sm:flex-row sm:items-center sm:justify-between";
+    const summary = document.createElement("div");
+    summary.className = "min-w-0";
+    const url = document.createElement("p");
+    url.className = "break-all font-semibold text-slate-950";
+    url.textContent = event.url;
+    const message = document.createElement("p");
+    message.className = "mt-1 break-words text-sm text-slate-600";
+    message.textContent = event.message;
+    summary.append(url, message);
+
+    const metadata = document.createElement("div");
+    metadata.className = "flex shrink-0 items-center gap-3";
+    const outcome = document.createElement("span");
+    const appearance = {
+      healthy: { label: "正常", classes: "bg-emerald-50 text-emerald-700" },
+      unhealthy: { label: "異常", classes: "bg-amber-50 text-amber-800" },
+      error: { label: "通信失敗", classes: "bg-red-50 text-red-700" },
+    }[event.outcome];
+    outcome.className = `rounded-full px-3 py-1 text-xs font-semibold ${appearance.classes}`;
+    outcome.textContent = appearance.label;
+    const checkedAt = document.createElement("time");
+    checkedAt.className = "text-xs text-slate-500";
+    checkedAt.dateTime = event.checkedAt;
+    checkedAt.textContent = new Intl.DateTimeFormat("ja-JP", {
+      dateStyle: "medium", timeStyle: "short",
+    }).format(new Date(event.checkedAt));
+    metadata.append(outcome, checkedAt);
+    item.append(summary, metadata);
+    monitorEventList.append(item);
+  }
+}
+
+let monitorEventsLoading = false;
+
+async function refreshMonitorEvents(): Promise<void> {
+  if (monitorEventsLoading) return;
+  monitorEventsLoading = true;
+  monitorEventRefresh.disabled = true;
+  monitorEventRefresh.textContent = "更新中...";
+  monitorEventList.setAttribute("aria-busy", "true");
+  try {
+    const events = await requestMonitorEvents();
+    renderMonitorEvents(events);
+    const updatedAt = new Intl.DateTimeFormat("ja-JP", { timeStyle: "medium" }).format(new Date());
+    monitorEventMessage.textContent = events.length === 0
+      ? `定期監視の履歴はまだありません。更新: ${updatedAt}`
+      : `最新${events.length}件を表示しています。更新: ${updatedAt}`;
+    monitorEventMessage.classList.remove("text-red-700");
+    monitorEventMessage.classList.add("text-slate-600");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "監視イベントを取得できませんでした。";
+    monitorEventMessage.textContent = monitorEventList.childElementCount === 0
+      ? message : `${message} 前回の表示を保持しています。`;
+    monitorEventMessage.classList.remove("text-slate-600");
+    monitorEventMessage.classList.add("text-red-700");
+  } finally {
+    monitorEventsLoading = false;
+    monitorEventRefresh.disabled = false;
+    monitorEventRefresh.textContent = "履歴を更新";
+    monitorEventList.setAttribute("aria-busy", "false");
+  }
+}
+
 async function refreshHistory(): Promise<void> {
   let results: SiteCheckResult[];
 
@@ -510,4 +598,12 @@ urlInput.addEventListener("input", () => {
   setFormMessage(defaultMessage, "text-slate-600");
 });
 
-void Promise.all([refreshHistory(), refreshMonitorTargets()]);
+monitorEventRefresh.addEventListener("click", () => { void refreshMonitorEvents(); });
+setInterval(() => {
+  if (!document.hidden) void refreshMonitorEvents();
+}, 30_000);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) void refreshMonitorEvents();
+});
+
+void Promise.all([refreshHistory(), refreshMonitorTargets(), refreshMonitorEvents()]);
