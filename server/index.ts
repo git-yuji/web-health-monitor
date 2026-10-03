@@ -12,6 +12,7 @@ import {
 } from "./result-store.js";
 import { validateTargetUrl } from "../src/url-validation.js";
 import { createMonitorRunner, parseMonitorInterval } from "./monitor-runner.js";
+import { loadMonitorEvents } from "./monitor-event-store.js";
 
 const port = 3000;
 const maxRequestBodyBytes = 16 * 1024;
@@ -137,6 +138,15 @@ async function handleResultsRequest(response: ServerResponse): Promise<void> {
   }
 }
 
+async function handleMonitorEventsRequest(response: ServerResponse): Promise<void> {
+  try {
+    const events = await loadMonitorEvents();
+    sendJson(response, 200, { events });
+  } catch (error) {
+    sendJson(response, 500, { message: getErrorMessage(error) } satisfies ErrorResponse);
+  }
+}
+
 async function handleResultsByUrlRequest(
   request: IncomingMessage,
   response: ServerResponse,
@@ -212,6 +222,11 @@ const server = createServer((request, response) => {
 
   if (request.method === "GET" && requestUrl.pathname === "/api/results") {
     void handleResultsRequest(response);
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/monitor-events") {
+    void handleMonitorEventsRequest(response);
     return;
   }
 

@@ -1,3 +1,7 @@
+import { isMonitorEvent, type MonitorEvent } from "./monitor-event.js";
+
+export type { MonitorEvent } from "./monitor-event.js";
+
 export type SiteCheckResult = {
   url: string;
   status: number;
@@ -154,6 +158,27 @@ export async function requestMonitorTargets(): Promise<MonitorTarget[]> {
   }
 
   return responseBody.targets;
+}
+
+export async function requestMonitorEvents(): Promise<MonitorEvent[]> {
+  const response = await fetch("/api/monitor-events", { signal: AbortSignal.timeout(10_000) });
+  let responseBody: unknown;
+  try {
+    responseBody = await response.json();
+  } catch {
+    throw new Error("監視イベントAPIから読み取れないレスポンスを受信しました。");
+  }
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(responseBody) ?? "監視イベントを取得できませんでした。");
+  }
+  if (
+    typeof responseBody !== "object" || responseBody === null ||
+    !("events" in responseBody) || !Array.isArray(responseBody.events) ||
+    !responseBody.events.every(isMonitorEvent)
+  ) {
+    throw new Error("監視イベントAPIから不正なレスポンスを受信しました。");
+  }
+  return responseBody.events;
 }
 
 export async function registerMonitorTarget(
