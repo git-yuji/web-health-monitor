@@ -11,6 +11,7 @@ import {
 } from "./site-check-api";
 import { createResponseTimeChart } from "./response-time-chart";
 import { validateTargetUrl } from "./url-validation";
+import type { SecurityHeaderCheck } from "./security-headers";
 
 const app = document.querySelector<HTMLElement>("#app");
 
@@ -132,6 +133,18 @@ app.innerHTML = `
       <section class="border-b border-slate-200/80 bg-white">
         <div class="mx-auto w-full max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
           <div class="mb-8">
+            <p class="text-xs font-bold tracking-[0.16em] text-emerald-700">SECURITY HEADERS</p>
+            <h2 class="mt-3 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">セキュリティヘッダーの確認</h2>
+            <p class="mt-3 text-sm leading-7 text-slate-600">ブラウザの保護設定を確認します。未設定でも直ちに危険とは限りません。設定済みの場合も、サイトの用途に合うか確認してください。</p>
+            <p id="security-header-message" class="mt-3 break-all text-sm text-slate-600">サイトを診断すると確認結果を表示します。</p>
+          </div>
+          <div id="security-header-list" class="grid gap-3 md:grid-cols-2"></div>
+        </div>
+      </section>
+
+      <section class="border-b border-slate-200/80 bg-white">
+        <div class="mx-auto w-full max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
+          <div class="mb-8">
             <p class="text-xs font-bold tracking-[0.16em] text-emerald-700">MONITOR TARGETS</p>
             <h2 class="mt-3 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">監視対象</h2>
             <p id="target-list-message" class="mt-3 text-sm text-slate-600" aria-live="polite">監視対象を読み込んでいます。</p>
@@ -245,6 +258,8 @@ const targetList = getRequiredElement<HTMLElement>(app, "#target-list");
 const monitorEventMessage = getRequiredElement<HTMLElement>(app, "#monitor-event-message");
 const monitorEventList = getRequiredElement<HTMLElement>(app, "#monitor-event-list");
 const monitorEventRefresh = getRequiredElement<HTMLButtonElement>(app, "#monitor-event-refresh");
+const securityHeaderMessage = getRequiredElement<HTMLElement>(app, "#security-header-message");
+const securityHeaderList = getRequiredElement<HTMLElement>(app, "#security-header-list");
 
 const defaultMessage = "URLを入力するとHTTPステータス、応答時間、SSL証明書の期限を確認できます。稼働率は完成イメージです。";
 type MessageColorClass = "text-slate-600" | "text-red-700" | "text-emerald-700";
@@ -303,6 +318,47 @@ function renderSiteCheck(result: SiteCheckResult): void {
   siteStatus.classList.toggle("ring-red-400/20", !isHealthy);
   siteStatusDot.classList.toggle("bg-emerald-400", isHealthy);
   siteStatusDot.classList.toggle("bg-red-400", !isHealthy);
+  securityHeaderMessage.textContent = `診断URL: ${result.url}`;
+  renderSecurityHeaders(securityHeaderList, result.securityHeaders);
+}
+
+function renderSecurityHeaders(container: HTMLElement, checks: SecurityHeaderCheck[] | undefined): void {
+  container.replaceChildren();
+  if (checks === undefined) {
+    const message = document.createElement("p");
+    message.className = "text-sm text-slate-600";
+    message.textContent = "この診断にはヘッダー情報がありません。再診断すると確認できます。";
+    container.append(message);
+    return;
+  }
+  const appearances = {
+    configured: { label: "設定済み", classes: "bg-emerald-50 text-emerald-700" },
+    missing: { label: "未設定", classes: "bg-slate-100 text-slate-700" },
+    review: { label: "要確認", classes: "bg-amber-50 text-amber-800" },
+    "not-applicable": { label: "対象外", classes: "bg-slate-100 text-slate-600" },
+  };
+  for (const check of checks) {
+    const card = document.createElement("article");
+    card.className = "min-w-0 rounded-2xl border border-slate-200 bg-white p-5";
+    const header = document.createElement("div");
+    header.className = "flex flex-wrap items-start justify-between gap-2";
+    const name = document.createElement("h3");
+    name.className = "min-w-0 break-words text-sm font-semibold text-slate-950";
+    name.textContent = check.name;
+    const badge = document.createElement("span");
+    const appearance = appearances[check.status];
+    badge.className = `shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${appearance.classes}`;
+    badge.textContent = appearance.label;
+    header.append(name, badge);
+    const message = document.createElement("p");
+    message.className = "mt-3 text-sm leading-6 text-slate-600";
+    message.textContent = check.message;
+    const value = document.createElement("code");
+    value.className = "mt-3 block whitespace-pre-wrap break-all rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700";
+    value.textContent = check.value === null ? "ヘッダーなし" : check.value === "" ? "空の値" : check.value;
+    card.append(header, message, value);
+    container.append(card);
+  }
 }
 
 function renderResponseTimeTrend(results: SiteCheckResult[]): void {
@@ -372,6 +428,16 @@ function renderHistory(results: SiteCheckResult[]): void {
       : "SSL 対象外";
     details.textContent = `HTTP ${result.status} ${result.statusText} · ${result.responseTimeMs} ms · ${ssl}`;
     summary.append(url, details);
+    const headerDetails = document.createElement("details");
+    headerDetails.className = "mt-3";
+    const headerSummary = document.createElement("summary");
+    headerSummary.className = "cursor-pointer text-sm font-semibold text-emerald-700";
+    headerSummary.textContent = "セキュリティヘッダーの確認";
+    const headerChecks = document.createElement("div");
+    headerChecks.className = "mt-3 grid gap-3";
+    renderSecurityHeaders(headerChecks, result.securityHeaders);
+    headerDetails.append(headerSummary, headerChecks);
+    summary.append(headerDetails);
 
     const metadata = document.createElement("div");
     metadata.className = "flex shrink-0 items-center gap-3";

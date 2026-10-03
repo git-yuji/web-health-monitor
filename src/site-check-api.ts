@@ -1,4 +1,5 @@
 import { isMonitorEvent, type MonitorEvent } from "./monitor-event.js";
+import { isSecurityHeaderChecks, type SecurityHeaderCheck } from "./security-headers.js";
 
 export type { MonitorEvent } from "./monitor-event.js";
 
@@ -14,6 +15,7 @@ export type SiteCheckResult = {
     validationError: string | null;
   } | null;
   checkedAt: string;
+  securityHeaders?: SecurityHeaderCheck[];
 };
 
 export type MonitorTarget = {
@@ -55,7 +57,8 @@ function isSiteCheckResult(value: unknown): value is SiteCheckResult {
     typeof result.statusText === "string" &&
     typeof result.responseTimeMs === "number" &&
     (result.sslCertificate === null || isSslCertificateInfo(result.sslCertificate)) &&
-    typeof result.checkedAt === "string"
+    typeof result.checkedAt === "string" &&
+    (result.securityHeaders === undefined || isSecurityHeaderChecks(result.securityHeaders))
   );
 }
 

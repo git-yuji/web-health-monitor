@@ -11,6 +11,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { normalizeTargetUrl } from "../src/url-validation.js";
 import type { SiteCheckResult } from "./check-site.js";
+import { isSecurityHeaderChecks } from "../src/security-headers.js";
 
 const defaultResultsFilePath = resolve(
   process.cwd(),
@@ -69,7 +70,8 @@ function isSiteCheckResult(value: unknown): value is SiteCheckResult {
     typeof result.statusText === "string" &&
     typeof result.responseTimeMs === "number" &&
     (result.sslCertificate === null || isSslCertificateInfo(result.sslCertificate)) &&
-    typeof result.checkedAt === "string"
+    typeof result.checkedAt === "string" &&
+    (result.securityHeaders === undefined || isSecurityHeaderChecks(result.securityHeaders))
   );
 }
 
