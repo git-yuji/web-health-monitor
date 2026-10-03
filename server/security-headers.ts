@@ -17,6 +17,22 @@ function parseDirectives(value: string): { directives: Map<string, string>; dupl
   return { directives, duplicate };
 }
 
+const sourceListDirectives = new Set([
+  "default-src", "child-src", "connect-src", "font-src", "frame-src", "img-src",
+  "manifest-src", "media-src", "object-src", "prefetch-src", "script-src",
+  "script-src-elem", "script-src-attr", "style-src", "style-src-elem", "style-src-attr",
+  "worker-src", "base-uri", "frame-ancestors", "form-action", "navigate-to",
+]);
+
+function isBroadCspSource(source: string): boolean {
+  if (/^(?:https?:|data:|'unsafe-inline'|'unsafe-eval')$/i.test(source)) return true;
+  // キーワード・nonce・ハッシュはホストのソース式ではない。
+  if (source.startsWith("'")) return false;
+  // ホストとポートだけを検査し、パスやクエリ中のアスタリスクとは区別する。
+  const hostAndPort = source.replace(/^[a-z][a-z\d+.-]*:\/\//i, "").split(/[/?#]/, 1)[0] ?? "";
+  return hostAndPort.includes("*");
+}
+
 export function analyzeSecurityHeaders(headers: ResponseHeaders, isHttps: boolean): SecurityHeaderCheck[] {
   const normalized = new Map(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]));
   const get = (name: string): string | null => {
@@ -53,7 +69,8 @@ export function analyzeSecurityHeaders(headers: ResponseHeaders, isHttps: boolea
   } else {
     const protective = ["default-src", "script-src", "script-src-elem", "object-src", "base-uri", "frame-ancestors", "form-action", "sandbox"]
       .some(name => policy.directives.has(name));
-    const permissive = /(?:^|\s)(?:\*|https?:|data:|'unsafe-inline'|'unsafe-eval')(?:\s|;|$)/i.test(csp);
+    const permissive = [...policy.directives].some(([name, value]) =>
+      sourceListDirectives.has(name) && value.trim().split(/\s+/).some(isBroadCspSource));
     const emptySource = [...policy.directives].some(([name, value]) => name !== "sandbox" &&
       ["default-src", "script-src", "script-src-elem", "object-src", "base-uri", "frame-ancestors", "form-action"].includes(name) && value.trim() === "");
     const configured = protective && !permissive && !emptySource && !policy.duplicate && !csp.includes(",");

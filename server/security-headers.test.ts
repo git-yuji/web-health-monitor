@@ -50,6 +50,36 @@ test("広い許可・空の値・重複・複数CSPは要確認にする", () =>
   }
 });
 
+test("CSPのワイルドカード付きホスト・ポートは要確認にする", () => {
+  for (const value of [
+    "script-src https://*.example.com",
+    "script-src *.example.com",
+    "script-src https://example.com:*",
+    "script-src https://*.example.com:443/assets/",
+    "default-src 'self'; img-src https://*.example.com",
+    "script-src\t'self'\thttps://*.example.com",
+    "script-src https://trusted.example.com https://*.example.com",
+  ]) {
+    assert.equal(check({ "content-security-policy": value }, "csp").status, "review", value);
+  }
+});
+
+test("CSPの具体的なホスト・ポートの許可とホストのワイルドカードを区別する", () => {
+  for (const value of [
+    "script-src https://trusted.example.com",
+    "script-src trusted.example.com",
+    "script-src https://trusted.example.com:443/assets/",
+    "default-src 'self'; img-src https://images.example.com",
+    "script-src https://trusted.example.com/path/*",
+  ]) {
+    assert.equal(check({ "content-security-policy": value }, "csp").status, "configured", value);
+  }
+});
+
+test("CSPの報告先のワイルドカードを読み込み元の広い許可と誤判定しない", () => {
+  assert.equal(check({ "content-security-policy": "default-src 'self'; report-uri https://reports.example.com/csp?tag=*" }, "csp").status, "configured");
+});
+
 test("nosniffの値と空・不正値・重複を区別する", () => {
   assert.equal(check({ "x-content-type-options": " nosniff " }, "content-type-options").status, "configured");
   for (const value of ["", "sniff", "nosniff, invalid"]) {
