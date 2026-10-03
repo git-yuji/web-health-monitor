@@ -72,6 +72,15 @@ export function createMonitorRunner(
   let started = false;
   let stopped = false;
 
+  async function recordAndNotify(event: MonitorEvent): Promise<void> {
+    try {
+      await dependencies.saveEvent(event);
+    } catch (error) {
+      dependencies.onError(error);
+    }
+    dependencies.onEvent(event);
+  }
+
   async function checkTarget(target: MonitorTarget): Promise<void> {
     let result: SiteCheckResult;
     try {
@@ -88,15 +97,17 @@ export function createMonitorRunner(
         outcome: "error",
         message: error instanceof Error ? error.message : "サイトの確認に失敗しました。",
       };
-      await dependencies.saveEvent(event);
-      dependencies.onEvent(event);
+      await recordAndNotify(event);
       return;
     }
-    // 保存失敗をサイトの通信障害として扱わない。
-    await dependencies.saveResult(result);
     const event = classifyMonitorResult(result);
-    await dependencies.saveEvent(event);
-    dependencies.onEvent(event);
+    // 履歴保存の失敗は運用エラーとして報告し、サイトの判定・記録・通知を続ける。
+    try {
+      await dependencies.saveResult(result);
+    } catch (error) {
+      dependencies.onError(error);
+    }
+    await recordAndNotify(event);
   }
 
   async function cycle(): Promise<void> {

@@ -114,8 +114,48 @@ test("保存失敗を通信障害として記録せず次の対象を処理す�
   h.dependencies.saveResult = async () => { if (++saves === 1) throw new Error("disk full"); };
   await h.create().run();
   assert.equal(h.errors.length, 1);
-  assert.deepEqual(h.events.map(event => event.outcome), ["healthy"]);
+  assert.deepEqual(h.events.map(event => event.outcome), ["healthy", "healthy"]);
+  assert.deepEqual(h.notified, h.events);
   assert.equal(saves, 2);
+});
+
+test("履歴保存に失敗してもHTTP500の異常イベントを記録・通知する", async () => {
+  const h = harness();
+  const storageError = new Error("disk full");
+  h.dependencies.check = async () => ({ ...result, status: 500, statusText: "Internal Server Error" });
+  h.dependencies.saveResult = async () => { throw storageError; };
+  await h.create().run();
+  assert.deepEqual(h.errors, [storageError]);
+  assert.deepEqual(h.events, [{
+    url: result.url, checkedAt: result.checkedAt, outcome: "unhealthy",
+    message: "HTTP 500 Internal Server Error",
+  }]);
+  assert.deepEqual(h.notified, h.events);
+});
+
+test("両方の保存が失敗してもサイト異常を通知し次の対象を診断する", async () => {
+  const h = harness();
+  h.dependencies.loadTargets = async () => [target, target];
+  const historyError = new Error("history unavailable");
+  const eventError = new Error("events unavailable");
+  h.dependencies.check = async () => ({ ...result, status: 500 });
+  h.dependencies.saveResult = async () => { throw historyError; };
+  h.dependencies.saveEvent = async () => { throw eventError; };
+  await h.create().run();
+  assert.deepEqual(h.errors, [historyError, eventError, historyError, eventError]);
+  assert.equal(h.events.length, 0);
+  assert.deepEqual(h.notified.map(event => event.outcome), ["unhealthy", "unhealthy"]);
+});
+
+test("通信失敗イベントの保存に失敗しても通信障害を通知する", async () => {
+  const h = harness();
+  const storageError = new Error("events unavailable");
+  h.dependencies.check = async () => { throw new Error("timeout"); };
+  h.dependencies.saveEvent = async () => { throw storageError; };
+  await h.create().run();
+  assert.deepEqual(h.errors, [storageError]);
+  assert.equal(h.notified[0]?.outcome, "error");
+  assert.equal(h.notified[0]?.message, "timeout");
 });
 
 test("対象一覧の読み込み失敗後も次の巡回で復旧する", async () => {
