@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { SiteCheckResult } from "./check-site.js";
+import { analyzeSecurityHeaders } from "./security-headers.js";
 import {
   loadSiteCheckResults,
   ResultStorageError,
@@ -39,6 +40,25 @@ const secondResult: SiteCheckResult = {
   responseTimeMs: 98,
   checkedAt: "2026-09-11T00:05:00.000Z",
 };
+
+test("旧履歴とヘッダー情報付き結果を保存し全体・URL別履歴で保持する", async context => {
+  const directory = await mkdtemp(join(tmpdir(), "security-header-history-"));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const filePath = join(directory, "results.jsonl");
+  const checked = { ...secondResult, securityHeaders: analyzeSecurityHeaders({ "x-content-type-options": "nosniff" }, true) };
+  await saveSiteCheckResult(firstResult, filePath);
+  await saveSiteCheckResult(checked, filePath);
+  assert.deepEqual(await loadSiteCheckResults(filePath), [checked, firstResult]);
+  assert.deepEqual(await loadSiteCheckResults(filePath, 20, checked.url), [checked, firstResult]);
+});
+
+test("保存された不正なヘッダー情報を拒否する", async context => {
+  const directory = await mkdtemp(join(tmpdir(), "security-header-invalid-history-"));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const filePath = join(directory, "results.jsonl");
+  await writeFile(filePath, `${JSON.stringify({ ...firstResult, securityHeaders: [] })}\n`);
+  await assert.rejects(loadSiteCheckResults(filePath), ResultStorageError);
+});
 
 test("同時に受け取った診断結果を呼び出し順に追記保存する", async (context) => {
   const temporaryDirectory = await mkdtemp(

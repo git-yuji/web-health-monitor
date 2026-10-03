@@ -3,6 +3,8 @@ import { request as requestHttps } from "node:https";
 import { performance } from "node:perf_hooks";
 import { TLSSocket } from "node:tls";
 import { resolvePublicAddresses } from "./network-policy.js";
+import { analyzeSecurityHeaders } from "./security-headers.js";
+import type { SecurityHeaderCheck } from "../src/security-headers.js";
 import {
   createSslCertificateInfo,
   InvalidCertificateExpirationError,
@@ -18,6 +20,7 @@ export type SiteCheckResult = {
   responseTimeMs: number;
   sslCertificate: SslCertificateInfo | null;
   checkedAt: string;
+  securityHeaders?: SecurityHeaderCheck[];
 };
 
 export class SiteCheckTimeoutError extends Error {
@@ -96,6 +99,7 @@ export async function checkSite(url: URL): Promise<SiteCheckResult> {
             responseTimeMs,
             sslCertificate,
             checkedAt: checkedAt.toISOString(),
+            securityHeaders: analyzeSecurityHeaders(response.headers, url.protocol === "https:"),
           });
         },
       );
