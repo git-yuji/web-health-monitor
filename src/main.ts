@@ -160,6 +160,10 @@ app.innerHTML = `
               <p class="text-xs font-bold tracking-[0.16em] text-emerald-700">MONITOR EVENTS</p>
               <h2 class="mt-3 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">定期監視の履歴</h2>
               <p class="mt-3 text-sm text-slate-600">正常・異常・通信失敗の最新20件。30秒ごとに自動更新します。</p>
+              <label class="mt-3 flex items-center gap-2 text-sm text-slate-700">
+                <input id="monitor-event-errors-only" type="checkbox" class="size-4 accent-emerald-600" />
+                最新20件のうち異常・通信失敗のみ表示
+              </label>
               <p id="monitor-event-message" class="mt-2 text-sm text-slate-600" aria-live="polite">監視イベントを読み込んでいます。</p>
             </div>
             <button id="monitor-event-refresh" type="button" class="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:border-emerald-500 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60">履歴を更新</button>
@@ -258,6 +262,7 @@ const targetList = getRequiredElement<HTMLElement>(app, "#target-list");
 const monitorEventMessage = getRequiredElement<HTMLElement>(app, "#monitor-event-message");
 const monitorEventList = getRequiredElement<HTMLElement>(app, "#monitor-event-list");
 const monitorEventRefresh = getRequiredElement<HTMLButtonElement>(app, "#monitor-event-refresh");
+const monitorEventErrorsOnly = getRequiredElement<HTMLInputElement>(app, "#monitor-event-errors-only");
 const securityHeaderMessage = getRequiredElement<HTMLElement>(app, "#security-header-message");
 const securityHeaderList = getRequiredElement<HTMLElement>(app, "#security-header-list");
 
@@ -543,6 +548,32 @@ function renderMonitorEvents(events: MonitorEvent[]): void {
 }
 
 let monitorEventsLoading = false;
+let cachedMonitorEvents: MonitorEvent[] | undefined;
+let monitorEventsUpdatedAt = "";
+let monitorEventsError: string | undefined;
+
+function renderFilteredMonitorEvents(): void {
+  if (cachedMonitorEvents !== undefined) {
+    const events = monitorEventErrorsOnly.checked
+      ? cachedMonitorEvents.filter(event => event.outcome !== "healthy")
+      : cachedMonitorEvents;
+    renderMonitorEvents(events);
+    const message = cachedMonitorEvents.length === 0
+      ? "定期監視の履歴はまだありません。"
+      : monitorEventErrorsOnly.checked
+        ? events.length === 0
+          ? `最新${cachedMonitorEvents.length}件に異常・通信失敗はありません。`
+          : `最新${cachedMonitorEvents.length}件のうち異常・通信失敗${events.length}件を表示しています。`
+        : `最新${events.length}件を表示しています。`;
+    monitorEventMessage.textContent = `${message} 更新: ${monitorEventsUpdatedAt}`;
+  }
+  if (monitorEventsError !== undefined) {
+    monitorEventMessage.textContent = cachedMonitorEvents === undefined
+      ? monitorEventsError : `${monitorEventsError} 前回取得した履歴を表示しています。`;
+  }
+  monitorEventMessage.classList.toggle("text-red-700", monitorEventsError !== undefined);
+  monitorEventMessage.classList.toggle("text-slate-600", monitorEventsError === undefined);
+}
 
 async function refreshMonitorEvents(): Promise<void> {
   if (monitorEventsLoading) return;
@@ -551,20 +582,13 @@ async function refreshMonitorEvents(): Promise<void> {
   monitorEventRefresh.textContent = "更新中...";
   monitorEventList.setAttribute("aria-busy", "true");
   try {
-    const events = await requestMonitorEvents();
-    renderMonitorEvents(events);
-    const updatedAt = new Intl.DateTimeFormat("ja-JP", { timeStyle: "medium" }).format(new Date());
-    monitorEventMessage.textContent = events.length === 0
-      ? `定期監視の履歴はまだありません。更新: ${updatedAt}`
-      : `最新${events.length}件を表示しています。更新: ${updatedAt}`;
-    monitorEventMessage.classList.remove("text-red-700");
-    monitorEventMessage.classList.add("text-slate-600");
+    cachedMonitorEvents = await requestMonitorEvents();
+    monitorEventsUpdatedAt = new Intl.DateTimeFormat("ja-JP", { timeStyle: "medium" }).format(new Date());
+    monitorEventsError = undefined;
+    renderFilteredMonitorEvents();
   } catch (error) {
-    const message = error instanceof Error ? error.message : "監視イベントを取得できませんでした。";
-    monitorEventMessage.textContent = monitorEventList.childElementCount === 0
-      ? message : `${message} 前回の表示を保持しています。`;
-    monitorEventMessage.classList.remove("text-slate-600");
-    monitorEventMessage.classList.add("text-red-700");
+    monitorEventsError = error instanceof Error ? error.message : "監視イベントを取得できませんでした。";
+    renderFilteredMonitorEvents();
   } finally {
     monitorEventsLoading = false;
     monitorEventRefresh.disabled = false;
@@ -665,6 +689,7 @@ urlInput.addEventListener("input", () => {
 });
 
 monitorEventRefresh.addEventListener("click", () => { void refreshMonitorEvents(); });
+monitorEventErrorsOnly.addEventListener("change", renderFilteredMonitorEvents);
 setInterval(() => {
   if (!document.hidden) void refreshMonitorEvents();
 }, 30_000);
