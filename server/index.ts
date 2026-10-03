@@ -11,9 +11,12 @@ import {
   saveSiteCheckResult,
 } from "./result-store.js";
 import { validateTargetUrl } from "../src/url-validation.js";
+import { createMonitorRunner, parseMonitorInterval } from "./monitor-runner.js";
 
 const port = 3000;
 const maxRequestBodyBytes = 16 * 1024;
+const monitorIntervalMs = parseMonitorInterval(process.env.MONITOR_INTERVAL_MS);
+const monitorRunner = createMonitorRunner(monitorIntervalMs);
 
 type ErrorResponse = {
   message: string;
@@ -232,4 +235,19 @@ const server = createServer((request, response) => {
 
 server.listen(port, "127.0.0.1", () => {
   console.log(`診断APIを http://127.0.0.1:${port} で起動しました。`);
+  monitorRunner.start();
+  console.log(monitorIntervalMs === 0
+    ? "定期監視は無効です。"
+    : `定期監視を開始しました（各巡回完了後 ${monitorIntervalMs} ms）。`);
 });
+
+function shutdown(): void {
+  server.close();
+  void monitorRunner.stop().catch((error: unknown) => {
+    console.error("定期監視の停止に失敗しました。", error);
+    process.exitCode = 1;
+  });
+}
+
+process.once("SIGINT", shutdown);
+process.once("SIGTERM", shutdown);
