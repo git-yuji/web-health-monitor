@@ -80,6 +80,17 @@ test("CSPの報告先のワイルドカードを読み込み元の広い許可�
   assert.equal(check({ "content-security-policy": "default-src 'self'; report-uri https://reports.example.com/csp?tag=*" }, "csp").status, "configured");
 });
 
+test("fenced-frame-srcの広い許可と具体的な許可元を区別する", () => {
+  for (const source of ["*", "https://*.example.com", "https://example.com:*", "https:"]) {
+    const value = `default-src 'self'; fenced-frame-src ${source}`;
+    assert.equal(check({ "content-security-policy": value }, "csp").status, "review", value);
+  }
+  for (const source of ["'self'", "'none'", "https://trusted.example.com"]) {
+    const value = `default-src 'self'; fenced-frame-src ${source}`;
+    assert.equal(check({ "content-security-policy": value }, "csp").status, "configured", value);
+  }
+});
+
 test("nosniffの値と空・不正値・重複を区別する", () => {
   assert.equal(check({ "x-content-type-options": " nosniff " }, "content-type-options").status, "configured");
   for (const value of ["", "sniff", "nosniff, invalid"]) {

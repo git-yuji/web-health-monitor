@@ -18,7 +18,7 @@ function parseDirectives(value: string): { directives: Map<string, string>; dupl
 }
 
 const sourceListDirectives = new Set([
-  "default-src", "child-src", "connect-src", "font-src", "frame-src", "img-src",
+  "default-src", "child-src", "connect-src", "font-src", "frame-src", "fenced-frame-src", "img-src",
   "manifest-src", "media-src", "object-src", "prefetch-src", "script-src",
   "script-src-elem", "script-src-attr", "style-src", "style-src-elem", "style-src-attr",
   "worker-src", "base-uri", "frame-ancestors", "form-action", "navigate-to",
