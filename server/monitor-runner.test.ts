@@ -158,6 +158,32 @@ test("通信失敗イベントの保存に失敗しても通信障害を通知�
   assert.equal(h.notified[0]?.message, "timeout");
 });
 
+test("外部通知に失敗しても次の対象を診断する", async () => {
+  const h = harness();
+  h.dependencies.loadTargets = async () => [
+    target,
+    { ...target, url: "https://example.org/" },
+  ];
+  h.dependencies.check = async (url) => ({
+    ...result,
+    url: url.href,
+    status: 500,
+    statusText: "Internal Server Error",
+  });
+  h.dependencies.onEvent = async () => {
+    throw new Error("webhook unavailable");
+  };
+
+  await h.create().run();
+
+  assert.equal(h.saved.length, 2);
+  assert.equal(h.events.length, 2);
+  assert.deepEqual(
+    h.errors.map((error) => error instanceof Error ? error.message : error),
+    ["webhook unavailable", "webhook unavailable"],
+  );
+});
+
 test("対象一覧の読み込み失敗後も次の巡回で復旧する", async () => {
   const h = harness();
   let calls = 0;

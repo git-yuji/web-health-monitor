@@ -44,7 +44,7 @@ type Dependencies = {
   check: (url: URL) => Promise<SiteCheckResult>;
   saveResult: (result: SiteCheckResult) => Promise<void>;
   saveEvent: (event: MonitorEvent) => Promise<void>;
-  onEvent: (event: MonitorEvent) => void;
+  onEvent: (event: MonitorEvent) => void | Promise<void>;
   onError: (error: unknown) => void;
 };
 
@@ -78,7 +78,7 @@ export function createMonitorRunner(
     } catch (error) {
       dependencies.onError(error);
     }
-    dependencies.onEvent(event);
+    await dependencies.onEvent(event);
   }
 
   async function checkTarget(target: MonitorTarget): Promise<void> {
