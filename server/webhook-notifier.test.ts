@@ -31,6 +31,18 @@ test("Webhook URLの未設定を許可しHTTPS URLだけを受け付ける", () 
   }
 });
 
+test("空のフラグメントも拒否しエンコードされたシャープは許可する", () => {
+  for (const value of [
+    "https://hooks.example.com/monitor#",
+    "https://hooks.example.com/monitor?token=test#",
+    "https://hooks.example.com/monitor#fragment",
+  ]) {
+    assert.throws(() => parseMonitorWebhookUrl(value), /フラグメント/);
+  }
+  const encodedUrl = "https://hooks.example.com/monitor%23?token=value%23";
+  assert.equal(parseMonitorWebhookUrl(encodedUrl)?.href, encodedUrl);
+});
+
 test("異常イベントをJSONでWebhookへ送信する", async () => {
   let calledUrl: string | undefined;
   let calledInit: RequestInit | undefined;

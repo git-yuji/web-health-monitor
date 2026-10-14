@@ -23,7 +23,7 @@ export function parseMonitorWebhookUrl(value: string | undefined): URL | undefin
     throw new Error("MONITOR_WEBHOOK_URLに認証情報を含めることはできません。");
   }
 
-  if (url.hash) {
+  if (url.href.includes("#")) {
     throw new Error("MONITOR_WEBHOOK_URLにフラグメントを含めることはできません。");
   }
 
