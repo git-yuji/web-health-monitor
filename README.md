@@ -72,9 +72,30 @@ MONITOR_INTERVAL_MS=0 npm run dev:api
 - 全巡回の判定と通信失敗は`data/monitor-events.jsonl`へ追記します。
 - HTTP 200〜399以外、SSL検証エラー、SSL残日数30日以下を異常と判定します。
 - タイムアウトやDNS・接続エラーも記録し、次のURLの診断を続けます。
-- 異常と通信失敗はサーバーの標準エラー出力へ通知します。メール・Webhookなどの
-  外部通知は実装していません。繰り返す異常は各巡回で出力します。
+- 異常と通信失敗はサーバーの標準エラー出力へ通知します。繰り返す異常は各巡回で出力します。
 - 保存処理の失敗は運用エラーとして出力し、サイトの通信障害とは区別します。
+
+`MONITOR_WEBHOOK_URL`にHTTPS URLを指定すると、異常と通信失敗をJSONでPOSTします。
+正常イベントは送信しません。送信は5秒でタイムアウトし、失敗しても次の監視対象を処理します。
+URLにはBasic認証形式の認証情報とフラグメントを含められません。トークンが必要な場合は
+Webhook URLのクエリパラメータを使用してください。
+
+```bash
+MONITOR_WEBHOOK_URL=https://hooks.example.com/monitor npm run dev:api
+```
+
+送信するJSONは次の形式です。
+
+```json
+{
+  "event": "monitor.alert",
+  "source": "web-health-monitor",
+  "url": "https://example.com/",
+  "checkedAt": "2026-10-14T00:00:00.000Z",
+  "outcome": "unhealthy",
+  "message": "HTTP 500 Internal Server Error"
+}
+```
 
 監視はAPIの単一プロセスで実行してください。複数プロセス間の排他制御、ログの保存期間管理、
 停止中の診断の補完はありません。SIGINT・SIGTERMでは次の巡回を停止し、実行中の診断と

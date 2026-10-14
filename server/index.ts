@@ -13,11 +13,25 @@ import {
 import { validateTargetUrl } from "../src/url-validation.js";
 import { createMonitorRunner, parseMonitorInterval } from "./monitor-runner.js";
 import { loadMonitorEvents } from "./monitor-event-store.js";
+import {
+  createWebhookNotifier,
+  parseMonitorWebhookUrl,
+} from "./webhook-notifier.js";
 
 const port = 3000;
 const maxRequestBodyBytes = 16 * 1024;
 const monitorIntervalMs = parseMonitorInterval(process.env.MONITOR_INTERVAL_MS);
-const monitorRunner = createMonitorRunner(monitorIntervalMs);
+const webhookNotifier = createWebhookNotifier(
+  parseMonitorWebhookUrl(process.env.MONITOR_WEBHOOK_URL),
+);
+const monitorRunner = createMonitorRunner(monitorIntervalMs, {
+  onEvent: async (event) => {
+    if (event.outcome !== "healthy") {
+      console.warn(`[監視 ${event.outcome}] ${event.url}: ${event.message}`);
+    }
+    await webhookNotifier(event);
+  },
+});
 
 type ErrorResponse = {
   message: string;
