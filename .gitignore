@@ -4,3 +4,9 @@ dist-server/
 data/
 .DS_Store
 *.local
+# environment variables
+.env
+.env.*
+!.env.example
+# logs
+npm-debug.log*
